@@ -1,0 +1,17 @@
+name: 'Experience: Interface Components'
+objective: Define the components, content, and states required for the user flows.
+inputs:
+- agent-artifacts/ux/user-flow-map.md
+- agent-data-sources/design-system.md
+steps:
+- Populate the Interface Components table with component names, purpose, backend capability
+  linkage, and status.
+- Document content notes, loading/empty/error states, accessibility considerations,
+  and analytics touchpoints.
+- Update changelog/user-flow-map.md with changes and follow-ups.
+- Align analytics touchpoints with agent-artifacts/observability/plan.md.
+- Log updates in changelog/observability.md.
+evidence:
+- Components and handoff sections in agent-artifacts/ux/user-flow-map.md filled out.
+- Log entry in changelog/user-flow-map.md.
+- Observability plan and log updated for UI components.

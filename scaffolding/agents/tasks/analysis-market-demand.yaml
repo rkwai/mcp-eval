@@ -1,0 +1,15 @@
+name: 'Analysis: Market & Demand'
+objective: Gauge existing demand by identifying concrete user actions that show they
+  are actively seeking solutions.
+inputs:
+- agent-data-sources/market-data.md
+- agent-artifacts/analysis/market-opportunity.md
+steps:
+- Quantify how often users actively search, request, or attempt solutions (query volume,
+  job postings, forum threads, etc.).
+- Document proof-of-demand signals in agent-artifacts/analysis/market-opportunity.md
+  (e.g., searches, communities, budget allocations).
+- Capture sources and observations in changelog/market-opportunity.md.
+evidence:
+- Market Opportunity Analysis updated with quantified demand signals and sources.
+- Demand log entry added to changelog/market-opportunity.md.

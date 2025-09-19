@@ -1,0 +1,18 @@
+name: 'Product: Data Flow Diagram'
+objective: Define how data moves through internal products and services so the company
+  can capture the money flow described by the analysis.
+inputs:
+- agent-artifacts/product/prd-data-flow.md
+- agent-data-sources/api-playbook.md
+steps:
+- Draw a C3 (component-level) Mermaid diagram in agent-artifacts/product/prd-data-flow.md
+  showing applications/services within their containers and how data moves between
+  them.
+- Enumerate company products (services/APIs), payload schemas, and storage requirements
+  that move data between teams and systems.
+- Update agent-artifacts/architecture/system-map.md with new product/service relationships.
+evidence:
+- Data Flow Diagram section of agent-artifacts/product/prd-data-flow.md updated with
+  the Mermaid C3 diagram.
+- Log entry in changelog/prd-data-flow.md.
+- Architecture system map updated in agent-artifacts/architecture/system-map.md.

@@ -1,0 +1,12 @@
+name: "Product: PRD Draft"
+objective: Capture the opportunity, money flow, and planned capabilities in the PRD, grounded in the market/business analysis.
+inputs:
+  - agent-artifacts/analysis/market-business-flow.md
+  - agent-data-sources/api-playbook.md
+steps:
+  - Summarise the opportunity and money flow from agent-artifacts/analysis/market-business-flow.md into agent-artifacts/product/prd-data-flow.md.
+  - List planned capabilities and APIs with target outcomes.
+  - Update changelog/prd-data-flow.md with key decisions and open questions.
+evidence:
+  - Opportunity, Money Flow Summary, and Release Scope sections in agent-artifacts/product/prd-data-flow.md completed.
+  - Log entry in changelog/prd-data-flow.md.

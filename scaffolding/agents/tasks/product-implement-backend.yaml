@@ -1,0 +1,20 @@
+name: 'Product: Implement Backend Capabilities'
+objective: Ship or stub the APIs and data plumbing defined in the PRD.
+inputs:
+- agent-artifacts/product/prd-data-flow.md
+- products/service-api/
+steps:
+- Scaffold or update services/endpoints in products/service-api/ to match the data
+  flow table in the PRD.
+- Document migrations or infrastructure scripts required for the data flow between
+  products and systems.
+- Record implementation status and links to commits or PRs in changelog/prd-data-flow.md.
+- Update agent-artifacts/architecture/system-map.md with implemented changes.
+- Record architecture updates in changelog/architecture.md.
+- Update agent-artifacts/observability/plan.md with backend signals and dashboards.
+- Record observability updates in changelog/observability.md.
+evidence:
+- Code or stubs present in products/service-api/ matching the PRD.
+- Implementation notes added to changelog/prd-data-flow.md.
+- Architecture updates noted in agent-artifacts/architecture/system-map.md and changelog/architecture.md.
+- Observability plan and log updated with backend coverage.

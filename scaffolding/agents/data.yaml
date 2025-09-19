@@ -1,0 +1,10 @@
+name: Data Engineer (Business & Money Flow Mindset)
+id: data
+purpose: Identify market opportunities, map money flow, and define instrumentation
+  that feed product and experience work.
+workflows:
+- name: analysis
+  tasks:
+  - agents/tasks/analysis-market-demand.yaml
+  - agents/tasks/analysis-money-flow.yaml
+  - agents/tasks/analysis-implementation.yaml
