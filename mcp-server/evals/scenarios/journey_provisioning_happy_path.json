@@ -1,0 +1,20 @@
+{
+  "id": "journey_provisioning_happy_path",
+  "description": "Validates the provisioning workflow using metrics and summary tools.",
+  "steps": [
+    {
+      "tool": "run_scenario",
+      "arguments": { "scenarioId": "journey_provisioning_happy_path" },
+      "expect": {
+        "status": "passed"
+      }
+    },
+    {
+      "tool": "export_summary",
+      "arguments": { "runId": "{{last_run_id}}", "audience": "internal" },
+      "expect": {
+        "summary_contains": ["Run", "completed"]
+      }
+    }
+  ]
+}

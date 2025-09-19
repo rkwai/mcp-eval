@@ -1,0 +1,15 @@
+{
+  "name": "mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server wrapping the API service with evaluation logging",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "eval:report": "node scripts/eval-report.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.3"
+  }
+}
