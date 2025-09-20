@@ -5,11 +5,13 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc -p .",
-    "eval:report": "node scripts/eval-report.js"
+    "eval:report": "node scripts/eval-report.js",
+    "eval:run": "ts-node scripts/run-evals.ts"
   },
   "devDependencies": {
     "@types/node": "^20.11.19",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.3"
+    "typescript": "^5.4.3",
+    "yargs": "^17.7.2"
   }
 }

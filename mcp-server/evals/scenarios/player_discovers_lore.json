@@ -1,0 +1,59 @@
+{
+  "id": "player_discovers_lore",
+  "description": "Player begins an adventure, uncovers new lore, and advances the story using that discovery.",
+  "preconditions": {
+    "apiBaseUrl": "http://localhost:4000",
+    "assumptions": [
+      "The API service boots with seeded campaign data.",
+      "Player identifier `ember-heart` is available on the roster."
+    ]
+  },
+  "steps": [
+    {
+      "label": "Player: Start my journey.",
+      "tool": "session.startAdventure",
+      "arguments": {
+        "playerId": "ember-heart"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "startingQuest.status", "equals": "active" }
+        ]
+      }
+    },
+    {
+      "label": "Player: Record the Chronicle of the Verdant Veil.",
+      "tool": "world.createLore",
+      "arguments": {
+        "title": "Chronicle of the Verdant Veil",
+        "summary": "Documentation of hidden druidic passageways beneath the clockwork canopy.",
+        "significance": "Provides safe traversal routes for allied scouts."
+      },
+      "capture": {
+        "loreTitle": "lore.title"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "lore.title", "equals": "Chronicle of the Verdant Veil" }
+        ]
+      }
+    },
+    {
+      "label": "Player: Use the newly charted pathways to flank the enemy.",
+      "tool": "session.progressAdventure",
+      "arguments": {
+        "playerId": "ember-heart",
+        "action": "leverage the Chronicle of the Verdant Veil to flank the enemy"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "quest.status", "equals": "completed" },
+          { "path": "resolutionNote", "contains": "Chronicle of the Verdant Veil" }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "id": "player_claims_artifact",
+  "description": "Player starts an adventure, manifests a new artifact, wields it, and advances the quest.",
+  "preconditions": {
+    "apiBaseUrl": "http://localhost:4000",
+    "assumptions": [
+      "The API service boots with seeded campaign data.",
+      "Player identifier `ember-heart` is available on the roster."
+    ]
+  },
+  "steps": [
+    {
+      "label": "Player: Begin the mission.",
+      "tool": "session.startAdventure",
+      "arguments": {
+        "playerId": "ember-heart"
+      },
+      "capture": {
+        "activeQuestId": "startingQuest.id"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "startingQuest.status", "equals": "active" }
+        ]
+      }
+    },
+    {
+      "label": "Player: Conjure a Blazing Chalice to aid us.",
+      "tool": "world.createItem",
+      "arguments": {
+        "name": "Blazing Chalice of Emberfall",
+        "type": "relic",
+        "rarity": "rare",
+        "attunementRequired": true,
+        "description": "Radiant chalice that blooms with healing flame when invoked in battle.",
+        "origin": "Emberheart Sanctum"
+      },
+      "capture": {
+        "artifactTemplate": "item.templateId"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "item.rarity", "equals": "rare" }
+        ]
+      }
+    },
+    {
+      "label": "Player: Claim the Blazing Chalice.",
+      "tool": "party.grantItem",
+      "arguments": {
+        "playerId": "ember-heart",
+        "templateId": "{{artifactTemplate}}"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "grantedItem.templateId", "equals": "{{artifactTemplate}}" }
+        ]
+      }
+    },
+    {
+      "label": "Player: Ignite the Blazing Chalice in battle.",
+      "tool": "party.useItem",
+      "arguments": {
+        "playerId": "ember-heart",
+        "itemTemplateId": "{{artifactTemplate}}"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "consumedItem.templateId", "equals": "{{artifactTemplate}}" },
+          { "path": "effect", "contains": "Fiery" }
+        ]
+      }
+    },
+    {
+      "label": "Player: Use the chalice's flame to clear the path.",
+      "tool": "session.progressAdventure",
+      "arguments": {
+        "playerId": "ember-heart",
+        "action": "channel the Blazing Chalice of Emberfall to clear the path forward"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "quest.status", "equals": "completed" },
+          { "path": "resolutionNote", "contains": "Blazing Chalice" }
+        ]
+      }
+    }
+  ]
+}

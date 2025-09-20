@@ -1,34 +1,42 @@
-# MCP Evaluation Template
+# Dungeon Master MCP Template
 
-This repository provides a template for building a Model Context Protocol (MCP) server on top of existing RESTful API endpoints and evaluating the tool-calling behavior of that server. The focus here is on demonstrating how to stand up a compliant MCP server quickly and how to design reliable evals that validate it is making the right calls at the right time.
+This repository shows how to layer a Model Context Protocol (MCP) server over an existing REST API so a language model can run a lightweight Dungeon Master experience. The emphasis is on designing application-grade MCP tools and authoring evals that guarantee the MCP orchestrates the API correctly.
 
-## Why this template exists
-- **MCP-first perspective:** Many teams already have REST APIs. This template shows how to expose those capabilities through an MCP server without rewriting business logic.
-- **Evaluation-focused:** Tool integration is only useful if you can prove it behaves correctly. The sample eval patterns here illustrate how to measure that behavior.
-- **Reusable patterns:** The project layout, configuration, and scripts aim to give you guardrails for new MCP services so you can start from a known-good baseline.
-
-## Repository layout
-- `api-service/` – Domain logic and REST API surface that powers tool implementations.
-- `mcp-server/` – MCP server, prompt logic, and embedded eval suites (`mcp-server/evals/`).
-- `scaffolding/` – Market research, references, and other helper assets to guide implementation.
+## What’s inside
+- `api-service/` – Express/TypeScript API that models a campaign world. Endpoints cover story flow, party management, and world-building with mutators for lore, NPCs, and artifacts.
+- `mcp-server/` – MCP implementation that exposes player-friendly tools such as `session.startAdventure`, `session.progressAdventure`, and world creation helpers. Includes eval runners and scripted scenarios.
+- `scaffolding/` – Market research, architecture notes, and changelog entries used while shaping the template.
 
 ## Getting started
-1. Install your preferred MCP tooling (e.g., `mcp` CLI or integration SDK) and clone this repository.
-2. Build or adapt your REST API inside `api-service/`, keeping schemas aligned with the tools you plan to expose.
-3. Implement the MCP server in `mcp-server/`, wiring tool definitions to the API service and maintaining prompt strategy alongside eval assets.
-4. Author eval scenarios in `mcp-server/evals/scenarios/`, run them against the server, and review the emitted logs in `mcp-server/evals/logs/` to confirm correct tool usage.
+1. Install dependencies and start the API service:
+   ```bash
+   npm install --prefix api-service
+   npm run dev --prefix api-service
+   ```
+2. Implement or adapt MCP tools under `mcp-server/src/`. The provided code already wires the session/world tools to the API.
+3. Run the MCP evals to verify behaviour:
+   ```bash
+   npm install --prefix mcp-server
+   npm run build --prefix mcp-server
+   # execute all scenarios (ensure the API service is running first)
+   npm run eval:run --prefix mcp-server
+   ```
+4. Inspect eval outputs in `mcp-server/evals/logs/` to confirm tool usage, narration strings, and quest rotations meet expectations.
 
 ## Evaluation philosophy
-Effective evals for MCP servers should:
-- Drive the server through realistic conversational flows.
-- Assert on both the tool selected and the arguments passed.
-- Capture and inspect artifacts to aid debugging when discrepancies appear.
-- Run automatically (CI, pre-merge hooks) to prevent regressions.
+Evals are the MCP equivalent of integration tests. Aim to:
+- Drive realistic player flows (start, recruit allies, craft artifacts, uncover lore, multi-turn progression).
+- Assert on tool selection, arguments, and narrative payloads.
+- Log results alongside the MCP code so regressions are immediately visible in CI.
 
-## Next steps
-- Flesh out the API and MCP server implementations so they reflect your real REST surface area.
-- Add scripted evals (e.g., TypeScript harness, pytest + jsonschema, or a custom runner) that validate tool-calling behavior.
-- Document any non-obvious setup steps or environment variables once they are known.
+Current scenarios cover:
+- `player_adventure_opening`
+- `player_requests_support`
+- `player_claims_artifact`
+- `player_discovers_lore`
+- `player_extended_session`
+
+Use them as blueprints when growing coverage (e.g., multi-party sessions, error paths, or sandboxed quest branches).
 
 ## Contributing
-Issues and pull requests are welcome. Please include updates to documentation and eval coverage when modifying the MCP server so future contributors can rely on accurate guidance and tests.
+Updates are welcome. Please keep the READMEs, tool documentation, and eval scenarios in sync so future contributors can trust the Dungeon Master flows and extend them confidently.
