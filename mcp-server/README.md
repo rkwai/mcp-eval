@@ -33,7 +33,7 @@ This Model Context Protocol server turns the lower-level REST endpoints from `..
 - `party.adjustStats`
 - `party.grantItem` / `party.useItem` / `party.dropItem`
 - `world.overview` / `world.lore` / `world.npcs` / `world.items`
-- `world.createLore` / `world.createNpc` / `world.createItem`
+- `world.createLore` / `world.createNpc` / `world.createItem` (supports optional `effect` narration)
 
 ## Development Flow
 1. Start the API layer: `npm run dev --prefix ../api-service`.

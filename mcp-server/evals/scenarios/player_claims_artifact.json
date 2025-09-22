@@ -34,7 +34,8 @@
         "rarity": "rare",
         "attunementRequired": true,
         "description": "Radiant chalice that blooms with healing flame when invoked in battle.",
-        "origin": "Emberheart Sanctum"
+        "origin": "Emberheart Sanctum",
+        "effect": "Fiery plumage erupts as allies are restored."
       },
       "capture": {
         "artifactTemplate": "item.templateId"
@@ -42,7 +43,8 @@
       "expect": {
         "status": "success",
         "assert": [
-          { "path": "item.rarity", "equals": "rare" }
+          { "path": "item.rarity", "equals": "rare" },
+          { "path": "item.effect", "contains": "Fiery" }
         ]
       }
     },

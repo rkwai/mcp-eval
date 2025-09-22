@@ -1,0 +1,24 @@
+# Node artifacts
+node_modules/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript build output
+api-service/dist/
+mcp-server/dist/
+
+# Eval logs
+mcp-server/evals/logs/
+
+# Environment
+.env
+.env.*
+
+# macOS
+.DS_Store
+
+# npm cache artifacts
+package-lock.json

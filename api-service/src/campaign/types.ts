@@ -45,6 +45,7 @@ export interface PlayerItem {
   attunementRequired: boolean;
   description: string;
   state: 'equipped' | 'stowed';
+  effect?: string;
 }
 
 export interface PlayerState {
@@ -106,6 +107,7 @@ export interface WorldItemTemplate {
   attunementRequired: boolean;
   description: string;
   origin: string;
+  effect?: string;
 }
 
 export interface ItemInput {
@@ -116,6 +118,7 @@ export interface ItemInput {
   attunementRequired: boolean;
   description: string;
   origin: string;
+  effect?: string;
 }
 
 export interface WorldState {

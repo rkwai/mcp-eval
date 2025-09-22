@@ -128,6 +128,7 @@ export function createPlayerItemFromTemplate(template: WorldItemTemplate): Playe
     attunementRequired: template.attunementRequired,
     description: template.description,
     state: 'stowed',
+    effect: template.effect,
   };
 }
 

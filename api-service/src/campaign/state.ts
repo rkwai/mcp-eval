@@ -28,6 +28,7 @@ export type {
   GrantItemInput,
   GrantItemResult,
   LoreEntry,
+  ItemInput,
   PlayerState,
   QuestUpdateInput,
   SerializedPlayer,
@@ -336,7 +337,10 @@ export function useItem(
   }
 
   const [item] = player.items.splice(itemIndex, 1);
-  const effect = describeItemUse(item.templateId);
+  const template = resolveWorldItemTemplate(campaign, item.templateId);
+  const effect = template?.effect?.trim() && template.effect.trim().length > 0
+    ? template.effect.trim()
+    : describeItemUse(item.templateId);
 
   return {
     ok: true,
@@ -462,6 +466,7 @@ export function createWorldItem(
     attunementRequired: input.attunementRequired,
     description: input.description.trim(),
     origin: input.origin.trim(),
+    effect: input.effect?.trim() && input.effect.trim().length > 0 ? input.effect.trim() : undefined,
   };
 
   campaign.world.itemManifest.push(item);
@@ -488,6 +493,10 @@ function createFallbackItem(
           : item.attunementRequired,
       description:
         typeof itemOverrides.description === 'string' ? itemOverrides.description : item.description,
+      effect:
+        typeof itemOverrides.effect === 'string' && itemOverrides.effect.trim().length > 0
+          ? itemOverrides.effect.trim()
+          : item.effect,
     };
   }
 
@@ -577,7 +586,8 @@ function validateItemInput(input: ItemInput): boolean {
     typeof input.rarity === 'string' &&
     typeof input.attunementRequired === 'boolean' &&
     isNonEmptyString(input.description) &&
-    isNonEmptyString(input.origin)
+    isNonEmptyString(input.origin) &&
+    (input.effect === undefined || isNonEmptyString(input.effect))
   );
 }
 

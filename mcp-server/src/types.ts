@@ -196,6 +196,7 @@ export interface ItemManifestResponse {
     attunementRequired: boolean;
     description: string;
     origin: string;
+    effect?: string;
   }>;
 }
 
@@ -207,6 +208,7 @@ export interface CreateItemPayload {
   attunementRequired: boolean;
   description: string;
   origin: string;
+  effect?: string;
 }
 
 export interface CreateItemResponse {
@@ -218,5 +220,6 @@ export interface CreateItemResponse {
     attunementRequired: boolean;
     description: string;
     origin: string;
+    effect?: string;
   };
 }

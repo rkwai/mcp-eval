@@ -1,4 +1,5 @@
 #!/usr/bin/env ts-node
+/// <reference path="../src/types/yargs.d.ts" />
 import fs from 'fs';
 import path from 'path';
 import yargs from 'yargs';
@@ -41,6 +42,7 @@ type EvalResult = {
 const scenarioDir = path.join(__dirname, '..', 'evals', 'scenarios');
 
 async function main() {
+  await ensureApiAvailable();
   const argv = await yargs(hideBin(process.argv))
     .option('scenario', {
       type: 'string',
@@ -76,6 +78,29 @@ async function main() {
     for (const result of results.filter((r) => !r.passed)) {
       console.log(`\n❌ ${result.scenario}`);
       result.failures.forEach((failure) => console.log(`  - ${failure}`));
+    }
+    process.exit(1);
+  }
+}
+
+async function ensureApiAvailable() {
+  const baseUrl = process.env.API_BASE_URL ?? 'http://127.0.0.1:4000';
+  const healthUrl = `${baseUrl.replace(/\/$/, '')}/health`;
+
+  try {
+    const response = await fetch(healthUrl, { method: 'GET', redirect: 'follow' });
+    if (!response.ok) {
+      console.warn(
+        `API health check responded with ${response.status}. Start the API service or override API_BASE_URL before running evals.`,
+      );
+      process.exit(1);
+    }
+  } catch (error) {
+    console.warn(
+      `Unable to reach API at ${healthUrl}. Start the API service or override API_BASE_URL before running evals.`,
+    );
+    if ((error as Error).message) {
+      console.warn((error as Error).message);
     }
     process.exit(1);
   }

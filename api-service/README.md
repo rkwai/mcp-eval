@@ -26,6 +26,7 @@ This service emulates a tabletop roleplaying Dungeon Master. It exposes domain-f
 - `POST /world/npcs` – Registers an NPC on the fly (useful for improv encounters).
 - `GET /world/items` – Shares the artifact manifest available to the MCP storytelling layer.
 - `POST /world/items` – Adds new world items/artifacts so players can earn or discover them later.
+  - Optional fields include `effect` to define the narrated outcome when the item is used.
 
 All payloads come from a curated campaign state seeded at runtime. Mutating endpoints update that state so subsequent calls reflect the latest quest assignments, stat changes, and inventory choices.
 

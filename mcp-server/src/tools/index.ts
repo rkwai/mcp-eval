@@ -106,6 +106,7 @@ const TOOL_REGISTRY: Record<ToolName, ToolRunner> = {
       attunementRequired: requireBoolean(args.attunementRequired, 'attunementRequired'),
       description: requireString(args.description, 'description'),
       origin: requireString(args.origin, 'origin'),
+      effect: optionalString(args.effect),
     }),
 };
 
