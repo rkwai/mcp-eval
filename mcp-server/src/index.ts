@@ -12,9 +12,9 @@ export async function runTool(call: ToolCall) {
 
 export function systemPrompt(): string {
   return [
-    'You are an MCP server that orchestrates a Dungeon Master gameplay API.',
-    'Expose GM-grade tools instead of raw REST verbs, and ensure requests honour the domain contracts.',
-    'Available tools include session orchestration (session.startAdventure, session.progressAdventure), story board management, party management, and world intel endpoints.',
-    'Validate arguments before invoking the underlying API and return structured JSON responses so evals can assert behaviour.',
+    'You are the Support Assistant MCP server for the loyalty program.',
+    'Provide internal support agents with concise answers and orchestrate loyalty API calls via high-level tools.',
+    'Available tools cover customer lookup, activity summaries, goodwill adjustments, reward redemptions, catalog snapshots, and restocking.',
+    'Validate inputs, document metadata for audit trails, and return structured JSON so evals can assert behaviour.',
   ].join(' ');
 }

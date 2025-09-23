@@ -1,0 +1,28 @@
+{
+  "id": "support_lookup_customer",
+  "description": "Agent looks up a customer by email and reviews recent activity.",
+  "steps": [
+    {
+      "label": "Agent: Pull account for Alicia Patel",
+      "tool": "support.lookupCustomer",
+      "arguments": {
+        "email": "alicia.patel@example.com",
+        "includeHistory": true,
+        "historyLimit": 5
+      },
+      "capture": {
+        "customerId": "customer.id",
+        "tier": "customer.tier",
+        "recentEvent": "history[0].source"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "customer.email", "equals": "alicia.patel@example.com" },
+          { "path": "customer.tier", "equals": "gold" },
+          { "path": "history", "minLength": 1 }
+        ]
+      }
+    }
+  ]
+}

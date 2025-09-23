@@ -1,5 +1,6 @@
 #!/usr/bin/env ts-node
 /// <reference path="../src/types/yargs.d.ts" />
+/// <reference types="node" />
 import fs from 'fs';
 import path from 'path';
 import yargs from 'yargs';

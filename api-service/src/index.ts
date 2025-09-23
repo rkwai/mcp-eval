@@ -1,20 +1,25 @@
 import express from 'express';
-import { createCampaignState } from './campaign/state';
-import { registerStoryRoutes } from './domains/story';
-import { registerPlayerRoutes } from './domains/players';
-import { registerWorldRoutes } from './domains/world';
+import { registerCustomerRoutes } from './routes/customers';
+import { registerRewardRoutes } from './routes/rewards';
+import { registerOfferRoutes } from './routes/offers';
 
 const app = express();
 app.use(express.json());
 
-const campaignState = createCampaignState();
-
-registerStoryRoutes(app, campaignState);
-registerPlayerRoutes(app, campaignState);
-registerWorldRoutes(app, campaignState);
+registerCustomerRoutes(app);
+registerRewardRoutes(app);
+registerOfferRoutes(app);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', uptime: process.uptime() });
+});
+
+app.get('/', (_req, res) => {
+  res.json({
+    name: 'Loyalty Rewards Mock Service',
+    version: '0.1.0',
+    endpoints: ['/customers', '/rewards', '/offers'],
+  });
 });
 
 export function createServer() {

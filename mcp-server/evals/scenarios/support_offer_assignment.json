@@ -1,0 +1,71 @@
+{
+  "id": "support_offer_assignment",
+  "description": "Agent reviews active offers and assigns one to Marcus Lee.",
+  "steps": [
+    {
+      "label": "Agent: Locate Marcus Lee",
+      "tool": "support.lookupCustomer",
+      "arguments": {
+        "email": "marcus.lee@example.com",
+        "includeHistory": false
+      },
+      "capture": {
+        "customerId": "customer.id"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "customer.name", "contains": "Marcus" }
+        ]
+      }
+    },
+    {
+      "label": "Agent: Review active offers",
+      "tool": "support.offerCatalog",
+      "arguments": {
+        "onlyActive": true
+      },
+      "capture": {
+        "offerId": "offers[0].id"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "offers", "minLength": 1 }
+        ]
+      }
+    },
+    {
+      "label": "Agent: Assign offer to Marcus",
+      "tool": "support.assignOffer",
+      "arguments": {
+        "customerId": "{{customerId}}",
+        "offerId": "{{offerId}}"
+      },
+      "capture": {
+        "customerOfferId": "id"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "customerId", "equals": "{{customerId}}" },
+          { "path": "status", "equals": "available" }
+        ]
+      }
+    },
+    {
+      "label": "Agent: List customer offers",
+      "tool": "support.customerOffers",
+      "arguments": {
+        "customerId": "{{customerId}}",
+        "includeExpired": false
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "offers", "minLength": 1 }
+        ]
+      }
+    }
+  ]
+}

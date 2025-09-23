@@ -1,42 +1,42 @@
-# Dungeon Master MCP Template
+# Loyalty Support MCP Template
 
-This repository shows how to layer a Model Context Protocol (MCP) server over an existing REST API so a language model can run a lightweight Dungeon Master experience. The emphasis is on designing application-grade MCP tools and authoring evals that guarantee the MCP orchestrates the API correctly.
+This repository demonstrates how to layer a Model Context Protocol (MCP) server over a loyalty/rewards REST API so an internal support assistant can resolve customer cases quickly. The emphasis is on designing intent-driven MCP tools (customer lookup, goodwill credits, reward management) and shipping evals that guarantee the MCP orchestrates the API correctly.
 
 ## What’s inside
-- `api-service/` – Express/TypeScript API that models a campaign world. Endpoints cover story flow, party management, and world-building with mutators for lore, NPCs, and artifacts.
-- `mcp-server/` – MCP implementation that exposes player-friendly tools such as `session.startAdventure`, `session.progressAdventure`, and world creation helpers. Includes eval runners and scripted scenarios.
+- `api-service/` – Mock loyalty service built with Express/TypeScript. Endpoints handle customer profiles, balance adjustments, reward redemptions, and catalog management.
+- `mcp-server/` – Support-focused MCP implementation exposing tools such as `support.lookupCustomer`, `support.issueGoodwill`, `support.redeemReward`, and `support.catalogSnapshot`, plus eval runners and scripted scenarios.
 - `scaffolding/` – Market research, architecture notes, and changelog entries used while shaping the template.
 
 ## Getting started
-1. Install dependencies and start the API service:
+1. Install dependencies and launch the loyalty API:
    ```bash
    npm install --prefix api-service
    npm run dev --prefix api-service
    ```
-2. Implement or adapt MCP tools under `mcp-server/src/`. The provided code already wires the session/world tools to the API.
+2. Implement or adapt the MCP tools under `mcp-server/src/` (the provided code already wires the support flows to the API).
 3. Run the MCP evals to verify behaviour:
    ```bash
    npm install --prefix mcp-server
    npm run build --prefix mcp-server
-   # execute all scenarios (ensure the API service is running first)
    npm run eval:run --prefix mcp-server
    ```
-4. Inspect eval outputs in `mcp-server/evals/logs/` to confirm tool usage, narration strings, and quest rotations meet expectations.
+4. Inspect eval outputs in `mcp-server/evals/logs/` to confirm tool usage, customer balances, and catalog updates match expectations.
 
 ## Evaluation philosophy
 Evals are the MCP equivalent of integration tests. Aim to:
-- Drive realistic player flows (start, recruit allies, craft artifacts, uncover lore, multi-turn progression).
-- Assert on tool selection, arguments, and narrative payloads.
+- Drive realistic support flows (account lookup, goodwill credits, reward assistance, inventory adjustments).
+- Assert on tool selection, arguments, and structured payloads (balances, activity logs, reward metadata).
 - Log results alongside the MCP code so regressions are immediately visible in CI.
 
 Current scenarios cover:
-- `player_adventure_opening`
-- `player_requests_support`
-- `player_claims_artifact`
-- `player_discovers_lore`
-- `player_extended_session`
+- `support_lookup_customer`
+- `support_issue_goodwill`
+- `support_redeem_reward`
+- `support_restock_reward`
+- `support_offer_assignment`
+- `support_offer_claim`
 
-Use them as blueprints when growing coverage (e.g., multi-party sessions, error paths, or sandboxed quest branches).
+Use them as blueprints when growing coverage (failed redemptions, tier escalations, contact preference updates, etc.).
 
 ## Contributing
-Updates are welcome. Please keep the READMEs, tool documentation, and eval scenarios in sync so future contributors can trust the Dungeon Master flows and extend them confidently.
+Updates are welcome. Keep the READMEs, tool documentation, and eval scenarios in sync so future contributors can rely on accurate guidance and tests.

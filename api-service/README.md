@@ -1,38 +1,43 @@
-# Dungeon Master API Service
+# Loyalty Rewards API Service
 
-This service emulates a tabletop roleplaying Dungeon Master. It exposes domain-focused REST endpoints that narrate the story, track player progress, and curate in-world lore. Responses are mocked with light randomisation inside an in-memory campaign state so the surrounding MCP server can prototype interactions before we plug into a live game engine.
+This mock service models the core surfaces that power a customer loyalty program. It exposes REST endpoints for managing customer profiles, tracking point balances, redeeming rewards, and auditing activity. Responses are persisted in-memory so the surrounding MCP server or test harness can iterate quickly without external dependencies.
 
 ## Domains & Endpoints
-### Story (`/story`)
-- `GET /story` – Returns the active campaign arc and a quest board grouped by availability.
-- `GET /story/quests` – Lists the full quest ledger with status, suggested challenges, and rewards.
-- `PATCH /story/quests/:questId` – Updates quest metadata (title, objective, location, challenges, rewards) as the narrative evolves.
-- `POST /story/quests/:questId/start` – Assigns an available quest to a player and marks it active.
-- `POST /story/quests/:questId/complete` – Completes an active quest for the assigned player and rolls a fresh hook onto the board.
+### Customers (`/customers`)
+- `GET /customers` – Returns all customers with summary balances and tier assignments.
+- `POST /customers` – Creates a new customer with basic profile data and optional starting tier/points.
+- `GET /customers/:customerId` – Retrieves the full profile, balances, and recent activity for a single customer.
+- `PATCH /customers/:customerId` – Updates contact information, preferred communication channel, or marketing opt-in flags.
 
-### Players (`/players`)
-- `GET /players` – Lists active party members with stats, inventory, and quest progress.
-- `GET /players/:playerId` – Returns the full character sheet for a specific adventurer.
-- `PATCH /players/:playerId/stats` – Applies level ups or ability score tweaks (absolute values or adjustments).
-- `POST /players/:playerId/items` – Grants a new item to the player, either by template ID or custom payload.
-- `POST /players/:playerId/items/:itemId/use` – Consumes an item and emits the narrated effect.
-- `DELETE /players/:playerId/items/:itemId` – Drops an item from the inventory (e.g., stash, trade, discard).
+### Loyalty Balances (`/customers/:customerId`)
+- `POST /customers/:customerId/earn` – Grants loyalty points from a qualifying event (purchase, referral, campaign, etc.).
+- `POST /customers/:customerId/redeem` – Redeems an available reward, deducts points, and emits the reward fulfillment payload.
+- `GET /customers/:customerId/history` – Lists chronological earning/redemption entries with metadata about the source event.
 
-### World (`/world`)
-- `GET /world` – Provides the current setting overview, active threats, and environmental cues.
-- `GET /world/lore` – Surfaces lore entries the party can research between sessions.
-- `POST /world/lore` – Creates new lore entries discovered during play.
-- `GET /world/npcs` – Returns notable NPCs with motivations and relationship cues.
-- `POST /world/npcs` – Registers an NPC on the fly (useful for improv encounters).
-- `GET /world/items` – Shares the artifact manifest available to the MCP storytelling layer.
-- `POST /world/items` – Adds new world items/artifacts so players can earn or discover them later.
-  - Optional fields include `effect` to define the narrated outcome when the item is used.
+### Rewards Catalog (`/rewards`)
+- `GET /rewards` – Lists reward items with the points required to redeem each.
+- `POST /rewards` – Adds a reward to the catalog (useful for campaign-specific perks during testing).
+- `PATCH /rewards/:rewardId` – Updates the cost, inventory, or active window for an existing reward (including optional fulfillment instructions).
 
-All payloads come from a curated campaign state seeded at runtime. Mutating endpoints update that state so subsequent calls reflect the latest quest assignments, stat changes, and inventory choices.
+### Offers (`/offers` & `/customers/:customerId/offers`)
+- `GET /offers` – Lists global campaign offers that can be targeted to customers.
+- `POST /offers` – Creates a new offer (links to a reward, defines validity, optional inventory).
+- `PATCH /offers/:offerId` – Updates an offer’s schedule, description, inventory, or active status.
+- `GET /customers/:customerId/offers` – Lists offers assigned to a customer, including status (`available`, `claimed`, `expired`).
+- `POST /customers/:customerId/offers` – Assigns an offer to a customer (for proactive outreach or remediation).
+- `POST /customers/:customerId/offers/:customerOfferId/claim` – Marks an assigned offer as claimed, fulfills the linked reward, and records activity without deducting loyalty points.
+
+All endpoints operate against a shared in-memory datastore seeded with sample customers, rewards, and transaction history. Mutating endpoints update that state so subsequent calls reflect the changes.
 
 ## Development
 1. `npm install`
 2. `npm run dev` to launch the Express server with hot execution via `ts-node`.
-3. Issue HTTP requests against `http://localhost:4000` (or the `PORT` env override) to explore the domains.
+3. Hit `http://localhost:4000` (or override with `HOST`/`PORT`) to exercise the loyalty endpoints.
 
-As we integrate with the real game engine, replace the mock generators with adapters that source canonical story state, player telemetry, and lore assets while keeping the endpoint contracts stable for upstream MCP tooling.
+## Data Model Notes
+- **Customers** track profile fields (`name`, `email`, `tier`), loyalty balances, communication preferences, and cumulative lifetime points.
+- **Transactions** capture both earn and redeem events with sources, channel tags, and point delta (+/-).
+- **Rewards** include catalog metadata, required points, stock counts, and optional fulfillment instructions.
+- **Offers** reference rewards, encode eligibility windows/quantities, and keep per-customer assignment status (`available`, `claimed`, `expired`). Complementary helper endpoints manage assignment and fulfillment without deducting loyalty points.
+
+Extend or replace the mock data to align with your real loyalty ecosystem when wiring an MCP server or integration tests against this service. Offers are especially useful for testing targeted campaigns—adapt the sample fulfillment logic to mirror production behaviour if needed.

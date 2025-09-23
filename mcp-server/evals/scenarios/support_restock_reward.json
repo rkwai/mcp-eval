@@ -1,0 +1,55 @@
+{
+  "id": "support_restock_reward",
+  "description": "Agent restocks a limited inventory reward after a partner shipment arrives.",
+  "steps": [
+    {
+      "label": "Agent: Snapshot catalog",
+      "tool": "support.catalogSnapshot",
+      "arguments": {
+        "onlyActive": true,
+        "minInventory": 1
+      },
+      "capture": {
+        "rewardId": "rewards[1].id",
+        "inventoryBefore": "rewards[1].inventory"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "rewards", "minLength": 2 }
+        ]
+      }
+    },
+    {
+      "label": "Agent: Restock selected reward by 5 units",
+      "tool": "support.restockReward",
+      "arguments": {
+        "rewardId": "{{rewardId}}",
+        "inventoryDelta": 5
+      },
+      "capture": {
+        "inventoryAfter": "inventory"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "id", "equals": "{{rewardId}}" }
+        ]
+      }
+    },
+    {
+      "label": "Agent: Confirm updated inventory",
+      "tool": "support.catalogSnapshot",
+      "arguments": {
+        "onlyActive": true
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "rewards[1].id", "equals": "{{rewardId}}" },
+          { "path": "rewards[1].inventory", "equals": "{{inventoryAfter}}" }
+        ]
+      }
+    }
+  ]
+}

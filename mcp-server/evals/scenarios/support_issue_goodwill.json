@@ -1,0 +1,61 @@
+{
+  "id": "support_issue_goodwill",
+  "description": "Agent issues goodwill points to a customer and verifies the updated balance.",
+  "steps": [
+    {
+      "label": "Agent: Fetch Marcus Lee",
+      "tool": "support.lookupCustomer",
+      "arguments": {
+        "email": "marcus.lee@example.com",
+        "includeHistory": false
+      },
+      "capture": {
+        "customerId": "customer.id",
+        "balanceBefore": "customer.pointsBalance"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "customer.name", "contains": "Marcus" }
+        ]
+      }
+    },
+    {
+      "label": "Agent: Grant 500 goodwill points",
+      "tool": "support.issueGoodwill",
+      "arguments": {
+        "customerId": "{{customerId}}",
+        "points": 500,
+        "reason": "Delayed shipment credit",
+        "channel": "email"
+      },
+      "capture": {
+        "balanceAfter": "customer.pointsBalance"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "activity.points", "equals": 500 },
+          { "path": "customer.pointsBalance", "equals": "{{balanceAfter}}" },
+          { "path": "activity.balanceAfter", "equals": "{{balanceAfter}}" }
+        ]
+      }
+    },
+    {
+      "label": "Agent: Summarize activity to confirm credit",
+      "tool": "support.activitySummary",
+      "arguments": {
+        "customerId": "{{customerId}}",
+        "limit": 5
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "records[0].source", "contains": "Goodwill" },
+          { "path": "records[0].points", "equals": 500 },
+          { "path": "totals.earned", "exists": true }
+        ]
+      }
+    }
+  ]
+}

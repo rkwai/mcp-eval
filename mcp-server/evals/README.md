@@ -5,21 +5,21 @@ Store evaluation scenarios, fixtures, and run artifacts here. Place scenario def
 ## Scenario Format
 - `id` – Stable identifier for the run.
 - `description` – Plain-language explanation of the goal.
-- `preconditions` – Optional metadata about required services, seed data, or assumptions.
 - `steps` – Ordered tool invocations the MCP server should execute. Each step supports:
   - `label` – Human-readable intent.
-  - `tool` – The MCP tool name (for example `story.beginQuest`).
+  - `tool` – The MCP tool name (e.g., `support.lookupCustomer`).
   - `arguments` – JSON arguments passed to the tool.
-  - `capture` – Optional map of tokens to JSON pointer-like expressions used later via `{{token}}` interpolation.
-  - `expect` – Assertions about the tool response. The reference harness recognises:
-    - `status` – `success` or `error` expectation.
-    - `assert` – Array of checks (`path` + constraint such as `exists`, `equals`, `contains`, or `minLength`).
+  - `capture` – Optional map of tokens to JSON path expressions used later via `{{token}}` interpolation.
+  - `expect` – Assertions about the tool response:
+    - `status` – Expected `success` or `error`.
+    - `assert` – Array of checks (path + constraint such as `equals`, `contains`, `minLength`, `exists`, `isNull`).
 
-### Available Scenarios
-- `player_adventure_opening` – Player starts the session and takes an initial action.
-- `player_requests_support` – Player recruits an NPC ally before advancing.
-- `player_claims_artifact` – Player manifests, wields, and leverages a new artifact.
-- `player_discovers_lore` – Player records fresh lore and uses it to progress the quest.
-- `player_extended_session` – Player executes three sequential actions to prove multi-turn quest continuity.
+## Current Scenarios
+- `support_lookup_customer` – Fetches a customer by email with recent activity snapshots.
+- `support_issue_goodwill` – Applies goodwill points and verifies the adjustment shows up in activity summaries.
+- `support_redeem_reward` – Redeems a catalog reward for a customer and confirms the transaction details.
+- `support_restock_reward` – Restocks limited inventory rewards and confirms catalog changes.
+- `support_offer_assignment` – Assigns a promotional offer to a customer and verifies availability.
+- `support_offer_claim` – Claims an assigned offer and confirms the associated reward fulfillment.
 
-Use these as templates when authoring additional evals (for example, multi-party runs or failure edge cases).
+Use these as templates when authoring additional support-focused evals (e.g., tier escalations, contact preference updates, or failed redemption recovery).

@@ -1,0 +1,60 @@
+{
+  "id": "support_offer_claim",
+  "description": "Agent claims an existing offer for Alicia Patel and confirms reward fulfillment.",
+  "steps": [
+    {
+      "label": "Agent: Locate Alicia Patel",
+      "tool": "support.lookupCustomer",
+      "arguments": {
+        "email": "alicia.patel@example.com",
+        "includeHistory": false
+      },
+      "capture": {
+        "customerId": "customer.id"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "customer.name", "contains": "Alicia" }
+        ]
+      }
+    },
+    {
+      "label": "Agent: Check assigned offers",
+      "tool": "support.customerOffers",
+      "arguments": {
+        "customerId": "{{customerId}}",
+        "includeExpired": false
+      },
+      "capture": {
+        "customerOfferId": "offers[0].id",
+        "offerName": "offers[0].offer.name"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "offers", "minLength": 1 }
+        ]
+      }
+    },
+    {
+      "label": "Agent: Claim the offer",
+      "tool": "support.claimOffer",
+      "arguments": {
+        "customerId": "{{customerId}}",
+        "customerOfferId": "{{customerOfferId}}"
+      },
+      "capture": {
+        "activityId": "activity.id"
+      },
+      "expect": {
+        "status": "success",
+        "assert": [
+          { "path": "customerOffer.status", "equals": "claimed" },
+          { "path": "offer.name", "contains": "{{offerName}}" },
+          { "path": "reward.id", "exists": true }
+        ]
+      }
+    }
+  ]
+}
