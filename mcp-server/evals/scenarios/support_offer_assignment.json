@@ -1,6 +1,12 @@
 {
   "id": "support_offer_assignment",
   "description": "Agent reviews active offers and assigns one to Marcus Lee.",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "Marcus Lee is on the line asking for any available promos. Pull his profile, find an active offer, assign it to him, and confirm it shows in his offers list."
+    }
+  ],
   "steps": [
     {
       "label": "Agent: Locate Marcus Lee",

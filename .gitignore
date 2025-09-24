@@ -16,6 +16,8 @@ mcp-server/evals/logs/
 # Environment
 .env
 .env.*
+!.env.example
+!mcp-server/.env.example
 
 # macOS
 .DS_Store

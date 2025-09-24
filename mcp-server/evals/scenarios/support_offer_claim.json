@@ -1,6 +1,12 @@
 {
   "id": "support_offer_claim",
   "description": "Agent claims an existing offer for Alicia Patel and confirms reward fulfillment.",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "Alicia Patel wants to use one of her assigned offers now. Pull a matching offer, claim it for her, and confirm the reward details."
+    }
+  ],
   "steps": [
     {
       "label": "Agent: Locate Alicia Patel",

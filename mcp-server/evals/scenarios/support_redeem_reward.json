@@ -1,6 +1,12 @@
 {
   "id": "support_redeem_reward",
   "description": "Agent reviews the reward catalog and redeems a perk for Jasmine Ortiz.",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "Jasmine Ortiz wants a perk redeemed. Pull her account, choose an active reward under 10k points, redeem it with a support channel note."
+    }
+  ],
   "steps": [
     {
       "label": "Agent: Identify Jasmine Ortiz",

@@ -4,10 +4,15 @@
   "description": "MCP server wrapping the API service with evaluation logging",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "node -e \"console.log('MCP server exposes tools only. Use npm run eval:run to exercise scenarios.')\"",
+    "dev": "node -e \"console.log('MCP server exposes tools only. Use npm run eval to exercise scenarios.')\"",
+    "serve": "ts-node src/runtime/stdio-entry.ts",
     "build": "tsc -p .",
-    "eval:report": "node scripts/eval-report.js",
-    "eval:run": "ts-node scripts/run-evals.ts"
+    "eval": "ts-node scripts/run-evals.ts",
+    "eval:llm": "ts-node scripts/run-evals.ts --llm",
+    "eval:report": "node scripts/eval-report.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.4.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.19",

@@ -1,6 +1,12 @@
 {
   "id": "support_lookup_customer",
   "description": "Agent looks up a customer by email and reviews recent activity.",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "Support request: Alicia Patel cannot see her loyalty balance. Pull up her profile and include recent ledger entries."
+    }
+  ],
   "steps": [
     {
       "label": "Agent: Pull account for Alicia Patel",

@@ -1,6 +1,12 @@
 {
   "id": "support_issue_goodwill",
   "description": "Agent issues goodwill points to a customer and verifies the updated balance.",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "Support request: Marcus Lee had a shipment delay. Grant him 500 goodwill points via email and confirm his activity shows the adjustment."
+    }
+  ],
   "steps": [
     {
       "label": "Agent: Fetch Marcus Lee",

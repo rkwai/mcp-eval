@@ -1,6 +1,12 @@
 {
   "id": "support_restock_reward",
   "description": "Agent restocks a limited inventory reward after a partner shipment arrives.",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "Inventory update: a partner replenished one of our limited rewards. Identify a low-stock item, restock it by 5, and confirm the catalog now shows the new inventory."
+    }
+  ],
   "steps": [
     {
       "label": "Agent: Snapshot catalog",
