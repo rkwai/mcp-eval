@@ -1,23 +1,13 @@
 import {
-  getJson,
-  postJson,
-  patchJson,
-} from '../client/api';
-import {
   CustomerDetailResponse,
   CustomerHistoryResponse,
-  CustomerListResponse,
+  CustomerOffer,
   EarnPointsResponse,
+  LoyaltyActivity,
+  Offer,
   RedeemRewardResponse,
   Reward,
-  RewardCatalogResponse,
-  UpdateRewardResponse,
-  OffersResponse,
-  CustomerOffersResponse,
-  AssignOfferResponse,
   ClaimOfferResponse,
-  Offer,
-  CustomerOffer,
 } from '../types';
 
 interface LookupCustomerArgs {
@@ -78,31 +68,178 @@ interface ClaimOfferArgs {
   customerOfferId: string;
 }
 
+const customers = new Map<string, InternalCustomer>([
+  [
+    'cust-alicia',
+    {
+      id: 'cust-alicia',
+      name: 'Alicia Patel',
+      email: 'alicia.patel@example.com',
+      phone: '555-0147',
+      tier: 'gold',
+      pointsBalance: 12850,
+      lifetimePoints: 45200,
+      preferences: { marketingOptIn: true, preferredChannel: 'sms' },
+      joinedAt: isoDaysAgo(120),
+      updatedAt: new Date().toISOString(),
+    },
+  ],
+  [
+    'cust-marcus',
+    {
+      id: 'cust-marcus',
+      name: 'Marcus Lee',
+      email: 'marcus.lee@example.com',
+      phone: '555-0199',
+      tier: 'silver',
+      pointsBalance: 4200,
+      lifetimePoints: 9200,
+      preferences: { marketingOptIn: true, preferredChannel: 'email' },
+      joinedAt: isoDaysAgo(200),
+      updatedAt: new Date().toISOString(),
+    },
+  ],
+  [
+    'cust-jasmine',
+    {
+      id: 'cust-jasmine',
+      name: 'Jasmine Ortiz',
+      email: 'jasmine.ortiz@example.com',
+      phone: undefined,
+      tier: 'platinum',
+      pointsBalance: 32000,
+      lifetimePoints: 88000,
+      preferences: { marketingOptIn: true, preferredChannel: 'push' },
+      joinedAt: isoDaysAgo(300),
+      updatedAt: new Date().toISOString(),
+    },
+  ],
+]);
+
+const activityStore = new Map<string, LoyaltyActivity[]>([
+  [
+    'cust-alicia',
+    [
+      buildActivity('cust-alicia', 'earn', 1200, 12850, 'In-store purchase', 3),
+      buildActivity('cust-alicia', 'redeem', -750, 11650, 'Espresso upgrade', 7),
+    ],
+  ],
+  [
+    'cust-marcus',
+    [
+      buildActivity('cust-marcus', 'earn', 900, 4200, 'Mobile order', 5),
+    ],
+  ],
+  [
+    'cust-jasmine',
+    [
+      buildActivity('cust-jasmine', 'earn', 1800, 32000, 'Premium booking', 4),
+    ],
+  ],
+]);
+
+const rewards: Reward[] = [
+  {
+    id: 'reward-espresso',
+    name: 'Complimentary Espresso Upgrade',
+    description: 'Upgrade any beverage to include an extra espresso shot.',
+    cost: 750,
+    inventory: null,
+    active: true,
+    fulfillmentInstructions: 'Apply upgrade at point of sale; no additional charge.',
+  },
+  {
+    id: 'reward-flight-upgrade',
+    name: 'Priority Boarding Voucher',
+    description: 'Skip the line and board early on your next flight.',
+    cost: 5600,
+    inventory: 120,
+    active: true,
+    fulfillmentInstructions: 'Present voucher at gate for verification.',
+  },
+  {
+    id: 'reward-gift-card',
+    name: '$25 Partner Gift Card',
+    description: 'Redeemable at participating retail partners.',
+    cost: 7800,
+    inventory: 45,
+    active: true,
+    fulfillmentInstructions: 'Digital code sent via email within 24 hours.',
+  },
+];
+
+const offers: Offer[] = [
+  {
+    id: 'offer-espresso-upgrade',
+    name: 'Weekend Espresso Upgrade',
+    description: 'Free espresso shot upgrade for elite customers this weekend.',
+    rewardId: 'reward-espresso',
+    startDate: new Date().toISOString(),
+    endDate: isoDaysAhead(7),
+    active: true,
+    quantity: null,
+  },
+  {
+    id: 'offer-priority-boarding',
+    name: 'Priority Boarding Token',
+    description: 'Limited boarding upgrades for recent high-value purchases.',
+    rewardId: 'reward-flight-upgrade',
+    startDate: new Date().toISOString(),
+    endDate: isoDaysAhead(14),
+    active: true,
+    quantity: 50,
+  },
+];
+
+const customerOfferStore = new Map<string, CustomerOffer[]>([
+  [
+    'cust-alicia',
+    [
+      {
+        id: 'coffer-alicia-upgrade',
+        offerId: 'offer-espresso-upgrade',
+        customerId: 'cust-alicia',
+        status: 'available',
+        assignedAt: new Date().toISOString(),
+        expiresAt: isoDaysAhead(7),
+        offer: offers[0],
+      },
+    ],
+  ],
+]);
+
 export async function lookupCustomer(args: LookupCustomerArgs) {
   const identifier = await resolveCustomerId(args);
-  const customer = await getJson<CustomerDetailResponse>(`/customers/${identifier}`);
+  const profile = customers.get(identifier);
+  if (!profile) {
+    throw new Error('Customer not found');
+  }
 
-  let history = [] as CustomerHistoryResponse['history'];
+  const history = (activityStore.get(identifier) ?? []).sort(
+    (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
+  );
+  const detail: CustomerDetailResponse = {
+    ...profile,
+    recentActivity: history.slice(0, 5),
+  };
+
+  let historyResponse: CustomerHistoryResponse['history'] = [];
   if (args.includeHistory) {
-    const response = await getJson<CustomerHistoryResponse>(`/customers/${identifier}/history`);
-    history = args.historyLimit
-      ? response.history.slice(0, args.historyLimit)
-      : response.history;
+    const limit = args.historyLimit ?? history.length;
+    historyResponse = history.slice(0, limit);
   }
 
   return {
-    customer,
-    history,
+    customer: detail,
+    history: historyResponse,
   };
 }
 
 export async function activitySummary(args: ActivitySummaryArgs) {
-  if (!args.customerId) {
-    throw new Error('customerId is required');
-  }
-
-  const historyResponse = await getJson<CustomerHistoryResponse>(`/customers/${args.customerId}/history`);
-  const records = args.limit ? historyResponse.history.slice(0, args.limit) : historyResponse.history;
+  const history = (activityStore.get(args.customerId) ?? []).sort(
+    (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
+  );
+  const records = args.limit ? history.slice(0, args.limit) : history;
   const totals = records.reduce(
     (acc, entry) => {
       if (entry.type === 'earn') {
@@ -127,45 +264,77 @@ export async function activitySummary(args: ActivitySummaryArgs) {
 }
 
 export async function issueGoodwill(args: IssueGoodwillArgs) {
-  if (!args.customerId) {
-    throw new Error('customerId is required');
+  const customer = customers.get(args.customerId);
+  if (!customer) {
+    throw new Error('Customer not found');
   }
   if (!Number.isFinite(args.points) || args.points <= 0) {
     throw new Error('points must be a positive number');
   }
-  if (!args.reason || !args.reason.trim()) {
-    throw new Error('reason is required');
-  }
 
-  return postJson<EarnPointsResponse>(`/customers/${args.customerId}/earn`, {
+  customer.pointsBalance += Math.round(args.points);
+  customer.lifetimePoints += Math.round(args.points);
+  customer.updatedAt = new Date().toISOString();
+
+  const activity = pushActivity({
+    customerId: customer.id,
+    type: 'earn',
     points: Math.round(args.points),
-    source: `Goodwill - ${args.reason.trim()}`,
-    channel: args.channel,
-    metadata: {
-      reason: args.reason.trim(),
-      issuedBy: 'support',
-    },
+    balanceAfter: customer.pointsBalance,
+    source: `Goodwill - ${args.reason}`,
   });
+
+  const response: EarnPointsResponse = {
+    customer: {
+      ...customer,
+      recentActivity: (activityStore.get(customer.id) ?? []).slice(0, 5),
+    },
+    activity,
+  };
+
+  return response;
 }
 
 export async function redeemReward(args: RedeemRewardArgs) {
-  if (!args.customerId) {
-    throw new Error('customerId is required');
-  }
-  if (!args.rewardId) {
-    throw new Error('rewardId is required');
+  const customer = customers.get(args.customerId);
+  if (!customer) {
+    throw new Error('Customer not found');
   }
 
-  return postJson<RedeemRewardResponse>(`/customers/${args.customerId}/redeem`, {
-    rewardId: args.rewardId,
-    channel: args.channel,
-    metadata: args.note ? { note: args.note } : undefined,
+  const reward = rewards.find((entry) => entry.id === args.rewardId);
+  if (!reward) {
+    throw new Error('Reward not found');
+  }
+
+  customer.pointsBalance = Math.max(0, customer.pointsBalance - reward.cost);
+  customer.updatedAt = new Date().toISOString();
+
+  if (reward.inventory !== null) {
+    reward.inventory = Math.max(0, reward.inventory - 1);
+  }
+
+  const activity = pushActivity({
+    customerId: customer.id,
+    type: 'redeem',
+    points: -reward.cost,
+    balanceAfter: customer.pointsBalance,
+    source: reward.name,
   });
+
+  const response: RedeemRewardResponse = {
+    customer: {
+      ...customer,
+      recentActivity: (activityStore.get(customer.id) ?? []).slice(0, 5),
+    },
+    reward,
+    activity,
+  };
+
+  return response;
 }
 
 export async function catalogSnapshot(args: CatalogSnapshotArgs = {}) {
-  const catalog = await getJson<RewardCatalogResponse>('/rewards');
-  const filtered = catalog.rewards.filter((reward) => {
+  const filtered = rewards.filter((reward) => {
     if (args.onlyActive && !reward.active) return false;
     if (typeof args.minInventory === 'number') {
       const stock = reward.inventory ?? Infinity;
@@ -184,98 +353,155 @@ export async function catalogSnapshot(args: CatalogSnapshotArgs = {}) {
 }
 
 export async function restockReward(args: RestockRewardArgs) {
-  if (!args.rewardId) {
-    throw new Error('rewardId is required');
-  }
-  if (!Number.isFinite(args.inventoryDelta)) {
-    throw new Error('inventoryDelta must be numeric');
+  const reward = rewards.find((entry) => entry.id === args.rewardId);
+  if (!reward) {
+    throw new Error('Reward not found');
   }
 
-  const reward = await getReward(args.rewardId);
-  const newInventory = reward.inventory === null
-    ? null
-    : Math.max(0, reward.inventory + Math.round(args.inventoryDelta));
-
-  const payload: Record<string, unknown> = {};
-  if (newInventory !== null) {
-    payload.inventory = newInventory;
+  if (reward.inventory !== null) {
+    reward.inventory = Math.max(0, reward.inventory + Math.round(args.inventoryDelta));
   }
   if (typeof args.active === 'boolean') {
-    payload.active = args.active;
+    reward.active = args.active;
   }
 
-  const response = await patchJson<UpdateRewardResponse>(`/rewards/${args.rewardId}`, payload);
-  return response.reward;
+  return reward;
 }
 
 export async function offerCatalog(args: OfferCatalogArgs = {}) {
-  const response = await getJson<OffersResponse>('/offers');
-  const offers = args.onlyActive
-    ? response.offers.filter((offer) => offer.active && !isExpired(offer.endDate))
-    : response.offers;
-
+  const availableOffers = args.onlyActive
+    ? offers.filter((offer) => offer.active && !isExpired(offer.endDate))
+    : offers;
   return {
-    offers,
-    total: offers.length,
+    offers: availableOffers,
+    total: availableOffers.length,
   };
 }
 
 export async function customerOffers(args: CustomerOffersArgs) {
-  if (!args.customerId) {
-    throw new Error('customerId is required');
-  }
+  const offersList = (customerOfferStore.get(args.customerId) ?? []).map((entry) => {
+    const offer = offers.find((item) => item.id === entry.offerId);
+    if (offer && entry.offer === undefined) {
+      entry.offer = offer;
+    }
+    if (entry.status === 'available' && entry.expiresAt && isExpired(entry.expiresAt)) {
+      entry.status = 'expired';
+    }
+    return entry;
+  });
 
-  const response = await getJson<CustomerOffersResponse>(`/customers/${args.customerId}/offers`);
-  const offers = args.includeExpired
-    ? response.offers
-    : response.offers.filter((entry) => entry.status !== 'expired');
+  const filtered = args.includeExpired ? offersList : offersList.filter((entry) => entry.status !== 'expired');
 
   return {
-    offers,
-    total: offers.length,
+    offers: filtered,
+    total: filtered.length,
   };
 }
 
 export async function assignOffer(args: AssignOfferArgs) {
-  if (!args.customerId) {
-    throw new Error('customerId is required');
+  const offer = offers.find((entry) => entry.id === args.offerId);
+  if (!offer) {
+    throw new Error('Offer not found');
   }
-  if (!args.offerId) {
-    throw new Error('offerId is required');
+  if (!offer.active) {
+    throw new Error('Offer is not active');
+  }
+  if (offer.quantity !== null && offer.quantity <= 0) {
+    throw new Error('Offer has no remaining quantity');
   }
 
-  const response = await postJson<AssignOfferResponse>(`/customers/${args.customerId}/offers`, {
-    offerId: args.offerId,
-    expiresAt: args.expiresAt,
-  });
+  const entry: CustomerOffer = {
+    id: generateId('coffer'),
+    offerId: offer.id,
+    customerId: args.customerId,
+    status: 'available',
+    assignedAt: new Date().toISOString(),
+    expiresAt: args.expiresAt ?? offer.endDate,
+    offer,
+  };
 
-  return response.customerOffer;
+  const list = customerOfferStore.get(args.customerId) ?? [];
+  list.push(entry);
+  customerOfferStore.set(args.customerId, list);
+
+  return entry;
 }
 
 export async function claimOffer(args: ClaimOfferArgs) {
-  if (!args.customerId) {
-    throw new Error('customerId is required');
+  const offersList = customerOfferStore.get(args.customerId) ?? [];
+  const entry = offersList.find((item) => item.id === args.customerOfferId);
+  if (!entry) {
+    throw new Error('Customer offer not found');
   }
-  if (!args.customerOfferId) {
-    throw new Error('customerOfferId is required');
+  if (entry.status === 'claimed') {
+    throw new Error('Offer already claimed');
+  }
+  if (entry.status === 'expired') {
+    throw new Error('Offer expired');
   }
 
-  return postJson<ClaimOfferResponse>(
-    `/customers/${args.customerId}/offers/${args.customerOfferId}/claim`,
-    {},
-  );
+  const offer = offers.find((item) => item.id === entry.offerId);
+  if (!offer) {
+    throw new Error('Offer definition missing');
+  }
+  if (!offer.active || (offer.endDate && isExpired(offer.endDate))) {
+    entry.status = 'expired';
+    throw new Error('Offer no longer active');
+  }
+  if (offer.quantity !== null) {
+    offer.quantity = Math.max(0, offer.quantity - 1);
+  }
+
+  entry.status = 'claimed';
+  entry.claimedAt = new Date().toISOString();
+
+  const reward = rewards.find((item) => item.id === offer.rewardId);
+  if (!reward) {
+    throw new Error('Linked reward not found');
+  }
+  if (reward.inventory !== null) {
+    reward.inventory = Math.max(0, reward.inventory - 1);
+  }
+
+  const customer = customers.get(args.customerId);
+  if (!customer) {
+    throw new Error('Customer not found');
+  }
+
+  const activity = pushActivity({
+    customerId: customer.id,
+    type: 'redeem',
+    points: 0,
+    balanceAfter: customer.pointsBalance,
+    source: `${offer.name} (offer claim)`,
+  });
+
+  const response: ClaimOfferResponse = {
+    customer: {
+      ...customer,
+      recentActivity: (activityStore.get(customer.id) ?? []).slice(0, 5),
+    },
+    offer,
+    customerOffer: entry,
+    reward,
+    activity,
+  };
+
+  return response;
 }
 
 async function resolveCustomerId({ customerId, email }: LookupCustomerArgs) {
   if (customerId) {
+    if (!customers.has(customerId)) {
+      throw new Error('Customer not found');
+    }
     return customerId;
   }
   if (!email) {
     throw new Error('Provide either customerId or email');
   }
 
-  const list = await getJson<CustomerListResponse>('/customers');
-  const match = list.customers.find((customer) => customer.email.toLowerCase() === email.toLowerCase());
+  const match = Array.from(customers.values()).find((customer) => customer.email.toLowerCase() === email.toLowerCase());
   if (!match) {
     throw new Error(`Customer with email ${email} not found`);
   }
@@ -283,14 +509,50 @@ async function resolveCustomerId({ customerId, email }: LookupCustomerArgs) {
   return match.id;
 }
 
-async function getReward(rewardId: string): Promise<Reward> {
-  const catalog = await getJson<RewardCatalogResponse>('/rewards');
-  const reward = catalog.rewards.find((entry) => entry.id === rewardId);
-  if (!reward) {
-    throw new Error(`Reward ${rewardId} not found`);
-  }
-  return reward;
+function pushActivity(entry: Omit<LoyaltyActivity, 'id' | 'occurredAt'> & { occurredAt?: string }) {
+  const activity: LoyaltyActivity = {
+    id: generateId('act'),
+    occurredAt: entry.occurredAt ?? new Date().toISOString(),
+    ...entry,
+  };
+  const list = activityStore.get(entry.customerId) ?? [];
+  list.unshift(activity);
+  activityStore.set(entry.customerId, list);
+  return activity;
 }
+
+function buildActivity(
+  customerId: string,
+  type: 'earn' | 'redeem',
+  points: number,
+  balanceAfter: number,
+  source: string,
+  daysAgo: number,
+): LoyaltyActivity {
+  return {
+    id: generateId('act'),
+    customerId,
+    type,
+    points,
+    balanceAfter,
+    source,
+    occurredAt: isoDaysAgo(daysAgo),
+  };
+}
+
+function isoDaysAgo(days: number) {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function isoDaysAhead(days: number) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function generateId(prefix: string) {
+  return `${prefix}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
+type InternalCustomer = Omit<CustomerDetailResponse, 'recentActivity'>;
 
 function isExpired(date?: string) {
   if (!date) return false;

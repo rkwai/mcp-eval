@@ -43,7 +43,12 @@ type EvalResult = {
 const scenarioDir = path.join(__dirname, '..', 'evals', 'scenarios');
 
 async function main() {
+const mode = process.env.EVAL_MODE === 'live' ? 'live' : 'mock';
+if (mode === 'live') {
   await ensureApiAvailable();
+} else {
+  console.log('⚠️  Running evals in mock mode (no API calls will be sent).');
+}
   const argv = await yargs(hideBin(process.argv))
     .option('scenario', {
       type: 'string',
@@ -329,6 +334,7 @@ function deepEqual(left: unknown, right: unknown): boolean {
 
   return false;
 }
+
 
 main().catch((error) => {
   console.error(error);

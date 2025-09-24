@@ -1,38 +1,44 @@
-# Support Assistant MCP Server
+# MCP Server Template
 
-This MCP server helps an internal customer support team resolve loyalty program requests quickly. Instead of exposing raw REST endpoints, it delivers higher-level tools that triage customer accounts, grant goodwill points, trigger reward redemptions, and summarize recent activity by orchestrating the `../api-service/` loyalty APIs.
+This directory contains a reference MCP server implementation. It highlights patterns you can adapt regardless of domain:
 
-## Core Responsibilities
-- **Customer insight orchestration** – Provide tools such as `support.lookupCustomer` and `support.activitySummary` that gather profile, balances, and recent transactions in one call.
-- **Goodwill adjustments** – Offer guardrailed actions like `support.issueGoodwill` to apply point credits with consistent metadata.
-- **Reward management** – Allow agents to redeem catalog rewards or extend inventory (`support.redeemReward`, `support.restockReward`) while tracking fulfillment.
-- **Guided resolution flows** – Combine multiple API calls into single intent-based tools so agents stay focused on outcomes (e.g., status checks, tier upgrades) rather than endpoint choreography.
+## Structure Overview
+- `src/index.ts` – Exposes the MCP entrypoint (`runTool`, `systemPrompt`).
+- `src/tools/` – High-level tool implementations; keep them intent-driven and decoupled from transport details.
+- `src/client/` – HTTP adapter definitions. Swap in a live adapter or keep the mock for evals.
+- `src/data/` – Mock data used by the default adapter. Replace with real integrations as needed.
+- `evals/` – Scenario definitions (`scenarios/`) and logs (`logs/`) that validate tool behaviour.
+- `scripts/` – Utility scripts, including `run-evals.ts` for executing scenarios.
 
-## Structure
-- `src/` – MCP server bootstrap, support-oriented tool contracts, and adapters that compose the loyalty API.
-- `evals/scenarios/` – Support playbooks that assert the MCP server can perform key support tasks end to end.
-- `evals/logs/` – Historical eval output for regression tracking.
-- `scripts/` – Helper scripts (e.g., eval runners) tailored to this MCP surface.
+## Tooling Patterns
+- Tools should express agent intent (e.g., `support.lookupCustomer`) rather than mirror REST routes.
+- Validation lives at the tool boundary: check required fields, coercions, and guardrails before calling adapters.
+- Responses should include structured data that downstream orchestrators can rely on (IDs, balances, metadata).
 
-## Tool Design Principles
-1. **Intent over plumbing** – Tools should mention agent actions (`support.lookupCustomer`, `support.issueGoodwill`, `support.redeemReward`) rather than the REST endpoints they bundle.
-2. **Bundled insight payloads** – Responses include customer summaries, loyalty balances, and provenance hints so agents can act immediately.
-3. **Guardrails** – Validate input (minimum metadata, confirmation flags) before calling the API to prevent accidental over-crediting or duplicate redemptions.
+## Adapters & Mocks
+- `src/client/api.ts` defines a simple HTTP adapter interface (`HttpAdapter`).
+- `src/client/mock-adapter.ts` + `src/data/mock-store.ts` show how to provide deterministic responses without real APIs.
+- Replace the mock adapter with a live implementation when integrating with REST or GraphQL endpoints. Authentication, retry logic, and circuit breakers can be added here without touching tools or evals.
 
-### Planned Tool Set
-- `support.lookupCustomer` – Fetch profile, balances, recent history, and tier suggestions.
-- `support.activitySummary` – Aggregate last N activities and flag anomalies (large redemptions, repeated failures).
-- `support.issueGoodwill` – Add points with standardized metadata (reason, agent, channel).
-- `support.redeemReward` – Attempt a reward redemption and summarize results (stock, confirmation).
-- `support.catalogSnapshot` – Provide a filtered view of rewards inventory for quick answers.
-- `support.restockReward` – Increase inventory when support grants exceptions.
-- `support.offerCatalog` / `support.customerOffers` – Review global promotions and customer-specific eligibility.
-- `support.assignOffer` / `support.claimOffer` – Target offers to customers and fulfill them with audit-friendly metadata.
+## Evals
+Evals live under `evals/scenarios/` and are intended to run in mock mode by default. They assert:
+- Which tool is called, with what arguments.
+- The structure of the returned payload.
+- Multi-step workflows (e.g., lookup → goodwill credit → summary).
 
-## Development Flow
-1. Start the loyalty API: `npm run dev --prefix ../api-service`.
-2. Implement MCP tools under `src/tools/`, using the loyalty adapters to orchestrate the API.
-3. Run `npm run eval:run` to drive the support scenarios. Optionally target a single scenario via `npm run eval:run -- --scenario support_issue_goodwill`.
-4. Inspect logs in `evals/logs/` or pipe results into your support QA dashboard.
+Run them with:
+```bash
+# Mock mode (default)
+npm run eval:run
 
-Keep evals and tooling aligned with frontline workflows (refunds, tier escalations, failed redemptions) so the MCP server remains a reliable support copilot.
+# Live mode (if you wire a real adapter)
+EVAL_MODE=live npm run eval:run
+```
+
+## Extending the Template
+1. **Add integrations** – Implement a custom `HttpAdapter` (or GraphQL client) and call `configureHttpAdapter` during startup.
+2. **Add tools** – Create intent-centric modules in `src/tools/` and register them in `src/tools/index.ts`.
+3. **Add scenarios** – Describe conversational workflows in `evals/scenarios/` so regressions are caught early.
+4. **Automate** – Wire `npm run build` and `npm run eval:run` into CI to keep tool semantics stable.
+
+This support-themed implementation is just an example. Replace the mock data, adapters, and toolset with your own APIs while keeping the structure, guardrails, and eval discipline.

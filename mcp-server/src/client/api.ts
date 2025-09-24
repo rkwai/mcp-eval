@@ -1,68 +1,38 @@
-export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
-
-const API_BASE_URL = process.env.API_BASE_URL ?? 'http://localhost:4000';
-
-interface RequestOptions {
-  method?: HttpMethod;
+export interface HttpRequest {
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  url: string;
   body?: unknown;
+  headers?: Record<string, string>;
 }
 
-export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const method = options.method ?? 'GET';
-  const url = `${API_BASE_URL}${path}`;
-
-  const response = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: composeBody(method, options.body),
-  });
-
-  if (!response.ok) {
-    const text = await safeText(response);
-    throw new Error(`API ${method} ${path} failed with status ${response.status}: ${text}`);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
+export interface HttpResponse<T = unknown> {
+  status: number;
+  data: T;
 }
 
-export function getJson<T>(path: string): Promise<T> {
-  return request<T>(path, { method: 'GET' });
+export type HttpAdapter = <T>(request: HttpRequest) => Promise<HttpResponse<T>>;
+
+let adapter: HttpAdapter = defaultMockAdapter;
+
+export function configureHttpAdapter(customAdapter: HttpAdapter) {
+  adapter = customAdapter;
 }
 
-export function postJson<T>(path: string, body: unknown): Promise<T> {
-  return request<T>(path, { method: 'POST', body });
+export async function httpGet<T>(url: string, headers?: Record<string, string>) {
+  return adapter<T>({ method: 'GET', url, headers });
 }
 
-export function patchJson<T>(path: string, body: unknown): Promise<T> {
-  return request<T>(path, { method: 'PATCH', body });
+export async function httpPost<T>(url: string, body?: unknown, headers?: Record<string, string>) {
+  return adapter<T>({ method: 'POST', url, body, headers });
 }
 
-export function deleteJson<T>(path: string): Promise<T> {
-  return request<T>(path, { method: 'DELETE' });
+export async function httpPatch<T>(url: string, body?: unknown, headers?: Record<string, string>) {
+  return adapter<T>({ method: 'PATCH', url, body, headers });
 }
 
-function composeBody(method: HttpMethod, body: unknown) {
-  if (method === 'GET' || method === 'DELETE') {
-    return undefined;
-  }
-
-  if (body === undefined) {
-    return undefined;
-  }
-
-  return JSON.stringify(body);
-}
-
-async function safeText(response: Response) {
-  try {
-    return await response.text();
-  } catch (error) {
-    return '[unreadable body]';
-  }
+async function defaultMockAdapter<T>(request: HttpRequest): Promise<HttpResponse<T>> {
+  throw new Error(
+    `No HTTP adapter configured for request ${request.method} ${request.url}. ` +
+      'Provide a custom adapter via configureHttpAdapter when integrating with live APIs.',
+  );
 }
