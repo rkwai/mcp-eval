@@ -1,4 +1,9 @@
 import { resolveTool, ToolArguments, ToolName } from './tools';
+import { configureHttpAdapter } from './client/api';
+import { mockHttpAdapter } from './client/mock-adapter';
+
+// Default to mock adapter so evals can run without external APIs.
+configureHttpAdapter(mockHttpAdapter);
 
 export type ToolCall = {
   name: ToolName;
