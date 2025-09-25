@@ -10,7 +10,6 @@ This repository demonstrates how to treat an MCP server as an **application** th
 ## Repository layout
 - `mcp-server/` – the reference MCP server, flow tools, runtime, and client adapter.
 - `mcp-server/evals/` – scenario definitions and optional JSONL logs.
-- `mcp-server/src/config/` – shared helpers (e.g., `.env` loader).
 - `README.md` (this file) – describes the template philosophy.
 - `mcp-server/README.md` – documents the server internals you’ll customise.
 - `mcp-server/evals/README.md` – documents how scenarios and outcome checks are structured.

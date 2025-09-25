@@ -163,7 +163,8 @@ async function runOpenRouterSession(
           error = (toolError as Error).message ?? 'Unknown tool error';
         }
 
-        invocations.push({ name: toolName, arguments: parsedArgs, response: result, error });
+        const storedResult = deepClone(result);
+        invocations.push({ name: toolName, arguments: parsedArgs, response: storedResult, error });
 
         const toolContent = error ? { error } : result ?? null;
         messages.push({
@@ -240,15 +241,23 @@ function coerceNumber(value: string | undefined, fallback: number): number {
 }
 
 function safeParseToolArguments(raw: string, definition?: ToolDefinition): ToolArguments {
-  if (!raw) return {};
+  if (!raw) {
+    return {};
+  }
+
+  const sanitised = sanitizeRawArguments(raw);
+
   try {
-    return JSON.parse(raw) as ToolArguments;
+    const parsed = JSON.parse(sanitised) as ToolArguments;
+    return postProcessArguments(parsed, definition);
   } catch (error) {
-    const repaired = attemptRepair(raw, definition);
+    const repaired = attemptRepair(sanitised, definition);
     if (Object.keys(repaired).length > 0) {
-      return repaired;
+      return postProcessArguments(repaired, definition);
     }
-    throw new Error(`Failed to parse tool arguments: ${(error as Error).message}`);
+    throw new Error(
+      `Failed to parse tool arguments: ${(error as Error).message}; raw=${truncateForError(sanitised)}`,
+    );
   }
 }
 
@@ -258,7 +267,7 @@ function attemptRepair(raw: string, definition?: ToolDefinition): ToolArguments 
     return result;
   }
 
-  const cleaned = raw.replace(/\s+/g, ' ');
+  const cleaned = normalizeForExtraction(raw);
 
   const properties = definition.inputSchema.properties ?? {};
   for (const [key, schema] of Object.entries(properties)) {
@@ -275,27 +284,45 @@ function extractValue(raw: string, key: string, type: string): unknown {
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const stringPattern = new RegExp(`${escapedKey}\s*[:=]\s*"([^"]*)"`, 'i');
+  const singleQuotePattern = new RegExp(`${escapedKey}\s*[:=]\s*'([^']*)'`, 'i');
   const noQuotePattern = new RegExp(`${escapedKey}\s*[:=]\s*([^,}\s]+)`, 'i');
+  const xmlPattern = new RegExp(`<parameter[^>]*name=["']${escapedKey}["'][^>]*>([^<]*)`, 'i');
+  const loosePattern = new RegExp(`${escapedKey}[^A-Za-z0-9_]+([^,}\s]+)`, 'i');
+
+  const cleanedRaw = raw
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/&quot;/g, '"');
 
   if (type === 'string' || type === undefined) {
-    const match = raw.match(stringPattern) || raw.match(noQuotePattern);
+    const match =
+      cleanedRaw.match(stringPattern) ||
+      cleanedRaw.match(singleQuotePattern) ||
+      cleanedRaw.match(xmlPattern) ||
+      cleanedRaw.match(noQuotePattern) ||
+      cleanedRaw.match(loosePattern);
     if (match) {
       return stripMarkers(match[1]);
     }
   }
 
   if (type === 'number') {
-    const match = raw.match(noQuotePattern);
-    if (match) {
-      const value = parseFloat(stripMarkers(match[1]));
-      if (!Number.isNaN(value)) {
-        return value;
-      }
+    const match =
+      cleanedRaw.match(noQuotePattern) ||
+      cleanedRaw.match(singleQuotePattern) ||
+      cleanedRaw.match(stringPattern) ||
+      cleanedRaw.match(loosePattern);
+    const numeric = coerceNumericValue(match ? stripMarkers(match[1]) : undefined);
+    if (numeric !== undefined) {
+      return numeric;
     }
   }
 
   if (type === 'boolean') {
-    const match = raw.match(noQuotePattern);
+    const match =
+      cleanedRaw.match(noQuotePattern) ||
+      cleanedRaw.match(singleQuotePattern) ||
+      cleanedRaw.match(stringPattern);
     if (match) {
       const normalized = stripMarkers(match[1]).toLowerCase();
       if (normalized === 'true') return true;
@@ -307,5 +334,163 @@ function extractValue(raw: string, key: string, type: string): unknown {
 }
 
 function stripMarkers(value: string): string {
-  return value.split('<')[0].replace(/['"]+/g, '').trim();
+  return value
+    .replace(/<\/?.*?>/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function sanitizeRawArguments(raw: string): string {
+  let cleaned = raw.trim();
+  cleaned = cleaned.replace(/\r?\n/g, ' ');
+  cleaned = cleaned.replace(/\t/g, ' ');
+  cleaned = cleaned.replace(/&quot;/g, '"');
+  cleaned = cleaned.replace(/[“”]/g, '"');
+  cleaned = cleaned.replace(/[‘’]/g, "'");
+  cleaned = cleaned.replace(/<\/?.*?>/g, ' ');
+  cleaned = cleaned.replace(/\s+/g, ' ');
+
+  const firstBrace = cleaned.indexOf('{');
+  if (firstBrace >= 0) {
+    const lastBrace = cleaned.lastIndexOf('}');
+    cleaned = lastBrace >= 0 ? cleaned.slice(firstBrace, lastBrace + 1) : cleaned.slice(firstBrace);
+  }
+
+  if (!cleaned.startsWith('{') && cleaned.includes(':')) {
+    cleaned = `{${cleaned.replace(/^,/, '')}}`;
+  }
+
+  cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
+  cleaned = cleaned.replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":');
+  cleaned = cleaned.replace(/([{,]\s*)"([A-Za-z0-9_]+)"\s*=\s*/g, '$1"$2": ');
+  cleaned = cleaned.replace(/([A-Za-z0-9_]+)\s*=\s*"([^"}]*)"/g, '"$1": "$2"');
+  cleaned = cleaned.replace(/([A-Za-z0-9_]+)\s*=\s*([^,}\s]+)/g, '"$1": "$2"');
+
+  const openBraces = (cleaned.match(/{/g) ?? []).length;
+  const closeBraces = (cleaned.match(/}/g) ?? []).length;
+  if (openBraces > closeBraces) {
+    cleaned += '}'.repeat(openBraces - closeBraces);
+  }
+
+  return cleaned;
+}
+
+function normalizeForExtraction(raw: string): string {
+  return raw
+    .replace(/\r?\n/g, ' ')
+    .replace(/\t/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/<\/?.*?>/g, ' ');
+}
+
+function postProcessArguments(args: ToolArguments, definition?: ToolDefinition): ToolArguments {
+  if (!definition?.inputSchema || !('properties' in definition.inputSchema)) {
+    return normaliseLoose(args) as ToolArguments;
+  }
+
+  const properties = definition.inputSchema.properties ?? {};
+  const output: Record<string, unknown> = {};
+  const source = normaliseLoose(args) as Record<string, unknown>;
+
+  for (const [key, value] of Object.entries(source)) {
+    const schema = properties[key];
+    output[key] = normaliseValueBySchema(value, schema);
+  }
+
+  return output as ToolArguments;
+}
+
+function normaliseLoose(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => normaliseLoose(entry));
+  }
+  if (value && typeof value === 'object') {
+    const mapped: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      mapped[key] = normaliseLoose(entry);
+    }
+    return mapped;
+  }
+  if (typeof value === 'string') {
+    return stripMarkers(value);
+  }
+  return value;
+}
+
+function normaliseValueBySchema(value: unknown, schema?: { type?: string }): unknown {
+  if (schema?.type === 'number' || schema?.type === 'integer') {
+    const coerced = coerceNumericValue(value);
+    return coerced !== undefined ? coerced : value;
+  }
+  if (schema?.type === 'boolean') {
+    const coerced = coerceBoolean(value);
+    return coerced !== undefined ? coerced : value;
+  }
+  if (schema?.type === 'string') {
+    return typeof value === 'string' ? stripMarkers(value) : value;
+  }
+  if (schema?.type === 'object' && value && typeof value === 'object') {
+    return normaliseLoose(value);
+  }
+  if (schema?.type === 'array' && Array.isArray(value)) {
+    return value.map((entry) => normaliseLoose(entry));
+  }
+  return normaliseLoose(value);
+}
+
+function coerceNumericValue(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const cleaned = stripMarkers(value);
+    const match = cleaned.match(/-?\d+(?:\.\d+)?/);
+    if (match) {
+      const parsed = Number(match[0]);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return undefined;
+}
+
+function coerceBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const normalized = stripMarkers(value).toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return undefined;
+}
+
+function deepClone<T>(value: T): T {
+  if (value === null || value === undefined) {
+    return value;
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.parse(JSON.stringify(value)) as T;
+    } catch (_error) {
+      // Fall through to return original reference when cloning fails (functions, circular refs, etc.)
+    }
+  }
+  return value;
+}
+
+function truncateForError(raw: string, limit = 200): string {
+  const trimmed = raw.trim();
+  if (trimmed.length <= limit) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, limit)}…`;
 }

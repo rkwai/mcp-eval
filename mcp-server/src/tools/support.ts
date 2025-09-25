@@ -106,6 +106,7 @@ interface RedeemRewardFlowArgs {
 
 interface RestockRewardFlowArgs {
   rewardId?: string;
+  searchTerm?: string;
   quantity?: number;
   targetInventory?: number;
   active?: boolean;
@@ -395,12 +396,10 @@ export async function restockRewardFlow(args: RestockRewardFlowArgs) {
   const catalog = await catalogSnapshot({ onlyActive: false });
   let reward = args.rewardId
     ? catalog.rewards.find((entry) => entry.id === args.rewardId)
-    : catalog.rewards
-        .filter((entry) => typeof entry.inventory === 'number')
-        .sort((a, b) => (a.inventory ?? Infinity) - (b.inventory ?? Infinity))[0];
+    : undefined;
 
-  if (!reward && args.rewardId) {
-    const normalized = args.rewardId.replace(/[_\-]/g, ' ').toLowerCase();
+  if (!reward && args.searchTerm) {
+    const normalized = args.searchTerm.toLowerCase();
     reward = catalog.rewards.find(
       (entry) =>
         entry.id.toLowerCase().includes(normalized) ||

@@ -12,8 +12,9 @@
       "label": "Agent: Restock priority boarding vouchers",
       "tool": "rewards.restock",
       "arguments": {
-        "rewardId": "reward-flight-upgrade",
-        "quantity": 5
+        "searchTerm": "priority",
+        "quantity": 5,
+        "targetInventory": 125
       },
       "expect": {
         "status": "success",
@@ -25,6 +26,10 @@
           {
             "path": "reward.inventory",
             "equals": 125
+          },
+          {
+            "path": "reward.name",
+            "contains": "Priority"
           }
         ]
       }

@@ -209,7 +209,7 @@ const TOOL_CONFIG: Record<ToolName, ToolConfig> = {
   'rewards.restock': {
     name: 'rewards.restock',
     description:
-      'Restock a catalog reward and return the updated record. Example: {"rewardId":"reward-flight-upgrade","quantity":5}.',
+      'Restock a catalog reward and return the updated record. Example: {"searchTerm":"priority boarding","quantity":5}.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -217,6 +217,10 @@ const TOOL_CONFIG: Record<ToolName, ToolConfig> = {
         rewardId: {
           type: 'string',
           description: 'Specific reward to restock (defaults to lowest inventory reward).',
+        },
+        searchTerm: {
+          type: 'string',
+          description: 'Optional fuzzy match against reward id or name when rewardId is omitted.',
         },
         quantity: {
           type: 'number',
@@ -235,6 +239,7 @@ const TOOL_CONFIG: Record<ToolName, ToolConfig> = {
     runner: async (args) =>
       supportTools.restockRewardFlow({
         rewardId: optionalString(args.rewardId),
+        searchTerm: optionalString(args.searchTerm),
         quantity: optionalNumber(args.quantity),
         targetInventory: optionalNumber(args.targetInventory),
         active: optionalBoolean(args.active),

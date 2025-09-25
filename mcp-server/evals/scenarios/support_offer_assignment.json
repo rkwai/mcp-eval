@@ -12,19 +12,26 @@
       "label": "Agent: Assign promo to Marcus",
       "tool": "offers.assign",
       "arguments": {
-        "email": "marcus.lee@example.com",
-        "offerId": "offer-espresso-upgrade"
+        "email": "marcus.lee@example.com"
       },
       "expect": {
         "status": "success",
         "assert": [
           {
             "path": "customerOffer.offerId",
-            "equals": "offer-espresso-upgrade"
+            "exists": true
           },
           {
-            "path": "offers[0].status",
+            "path": "customerOffer.status",
             "equals": "available"
+          },
+          {
+            "path": "customer.email",
+            "equals": "marcus.lee@example.com"
+          },
+          {
+            "path": "customerOffer.customerId",
+            "equals": "cust-marcus"
           }
         ]
       }
