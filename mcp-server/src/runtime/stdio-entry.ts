@@ -1,5 +1,8 @@
 #!/usr/bin/env ts-node
+import { loadEnv } from '../config/load-env';
 import { startMcpServer } from './server';
+
+loadEnv();
 
 startMcpServer()
   .then(() => {

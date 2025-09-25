@@ -4,29 +4,32 @@
   "conversation": [
     {
       "role": "user",
-      "content": "Support request: Alicia Patel cannot see her loyalty balance. Pull up her profile and include recent ledger entries."
+      "content": "Alicia Patel wants a balance check. Pull her profile and give me the recent ledger entries so I can walk her through them."
     }
   ],
   "steps": [
     {
-      "label": "Agent: Pull account for Alicia Patel",
-      "tool": "support.lookupCustomer",
+      "label": "Agent: Snapshot Alicia Patel",
+      "tool": "customer.snapshot",
       "arguments": {
         "email": "alicia.patel@example.com",
-        "includeHistory": true,
         "historyLimit": 5
-      },
-      "capture": {
-        "customerId": "customer.id",
-        "tier": "customer.tier",
-        "recentEvent": "history[0].source"
       },
       "expect": {
         "status": "success",
         "assert": [
-          { "path": "customer.email", "equals": "alicia.patel@example.com" },
-          { "path": "customer.tier", "equals": "gold" },
-          { "path": "history", "minLength": 1 }
+          {
+            "path": "customer.email",
+            "equals": "alicia.patel@example.com"
+          },
+          {
+            "path": "history",
+            "minLength": 1
+          },
+          {
+            "path": "summary.totals",
+            "exists": true
+          }
         ]
       }
     }

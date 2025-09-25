@@ -1,67 +1,33 @@
 {
   "id": "support_redeem_reward",
-  "description": "Agent reviews the reward catalog and redeems a perk for Jasmine Ortiz.",
+  "description": "Agent redeems a reward for a customer and confirms the transaction.",
   "conversation": [
     {
       "role": "user",
-      "content": "Jasmine Ortiz wants a perk redeemed. Pull her account, choose an active reward under 10k points, redeem it with a support channel note."
+      "content": "Jasmine Ortiz wants us to redeem an espresso upgrade for her while she waits. Take care of it and let me know the result."
     }
   ],
   "steps": [
     {
-      "label": "Agent: Identify Jasmine Ortiz",
-      "tool": "support.lookupCustomer",
+      "label": "Agent: Redeem reward for Jasmine",
+      "tool": "rewards.redeem",
       "arguments": {
         "email": "jasmine.ortiz@example.com",
-        "includeHistory": false
-      },
-      "capture": {
-        "customerId": "customer.id",
-        "startingBalance": "customer.pointsBalance"
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          { "path": "customer.name", "contains": "Jasmine" }
-        ]
-      }
-    },
-    {
-      "label": "Agent: Review catalog for affordable rewards",
-      "tool": "support.catalogSnapshot",
-      "arguments": {
-        "onlyActive": true,
-        "maxCost": 10000
-      },
-      "capture": {
-        "targetReward": "rewards[0].id",
-        "targetName": "rewards[0].name"
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          { "path": "rewards", "minLength": 1 }
-        ]
-      }
-    },
-    {
-      "label": "Agent: Redeem first matching reward",
-      "tool": "support.redeemReward",
-      "arguments": {
-        "customerId": "{{customerId}}",
-        "rewardId": "{{targetReward}}",
+        "rewardId": "reward-espresso",
         "channel": "support",
         "note": "gesture of goodwill"
       },
-      "capture": {
-        "postBalance": "customer.pointsBalance"
-      },
       "expect": {
         "status": "success",
         "assert": [
-          { "path": "reward.id", "equals": "{{targetReward}}" },
-          { "path": "activity.source", "contains": "{{targetName}}" },
-          { "path": "customer.pointsBalance", "exists": true }
+          {
+            "path": "reward.id",
+            "equals": "reward-espresso"
+          },
+          {
+            "path": "activity.points",
+            "equals": -750
+          }
         ]
       }
     }

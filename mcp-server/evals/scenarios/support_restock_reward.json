@@ -1,59 +1,31 @@
 {
   "id": "support_restock_reward",
-  "description": "Agent restocks a limited inventory reward after a partner shipment arrives.",
+  "description": "Agent restocks a reward and confirms the catalog reflects the change.",
   "conversation": [
     {
       "role": "user",
-      "content": "Inventory update: a partner replenished one of our limited rewards. Identify a low-stock item, restock it by 5, and confirm the catalog now shows the new inventory."
+      "content": "We just received five more priority boarding vouchers from the partner team. Update the catalog inventory and confirm the new count."
     }
   ],
   "steps": [
     {
-      "label": "Agent: Snapshot catalog",
-      "tool": "support.catalogSnapshot",
+      "label": "Agent: Restock priority boarding vouchers",
+      "tool": "rewards.restock",
       "arguments": {
-        "onlyActive": true,
-        "minInventory": 1
-      },
-      "capture": {
-        "rewardId": "rewards[1].id",
-        "inventoryBefore": "rewards[1].inventory"
+        "rewardId": "reward-flight-upgrade",
+        "quantity": 5
       },
       "expect": {
         "status": "success",
         "assert": [
-          { "path": "rewards", "minLength": 2 }
-        ]
-      }
-    },
-    {
-      "label": "Agent: Restock selected reward by 5 units",
-      "tool": "support.restockReward",
-      "arguments": {
-        "rewardId": "{{rewardId}}",
-        "inventoryDelta": 5
-      },
-      "capture": {
-        "inventoryAfter": "inventory"
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          { "path": "id", "equals": "{{rewardId}}" }
-        ]
-      }
-    },
-    {
-      "label": "Agent: Confirm updated inventory",
-      "tool": "support.catalogSnapshot",
-      "arguments": {
-        "onlyActive": true
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          { "path": "rewards[1].id", "equals": "{{rewardId}}" },
-          { "path": "rewards[1].inventory", "equals": "{{inventoryAfter}}" }
+          {
+            "path": "reward.id",
+            "equals": "reward-flight-upgrade"
+          },
+          {
+            "path": "reward.inventory",
+            "equals": 125
+          }
         ]
       }
     }

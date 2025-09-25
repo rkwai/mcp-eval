@@ -1,12 +1,12 @@
 import { systemPrompt, runTool } from '../index';
-import { TOOL_DEFINITIONS, ToolArguments, ToolName, ToolDefinition, ToolSchema } from '../tools';
+import { TOOL_DEFINITIONS, ToolArguments, ToolName, ToolDefinition } from '../tools';
 
 export type LlmMessage = {
   role: 'user' | 'assistant' | 'system';
   content: string;
 };
 
-export type SupportedProvider = 'openai' | 'openrouter' | 'gemini';
+export type SupportedProvider = 'openrouter';
 
 export interface LlmSessionOptions {
   provider?: SupportedProvider;
@@ -36,26 +36,26 @@ export interface LlmSessionResult {
   invocations: ToolInvocationRecord[];
 }
 
-type OpenAiChatCompletionResponse = {
+type OpenRouterChatCompletionResponse = {
   choices: Array<{
-    message: OpenAiChatMessageWithCalls;
+    message: OpenRouterChatMessageWithCalls;
     finish_reason?: string;
   }>;
 };
 
-type OpenAiChatMessage = {
+type OpenRouterChatMessage = {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string | null;
   name?: string;
   tool_call_id?: string;
-  tool_calls?: OpenAiToolCall[];
+  tool_calls?: OpenRouterToolCall[];
 };
 
-type OpenAiChatMessageWithCalls = OpenAiChatMessage & {
-  tool_calls?: OpenAiToolCall[];
+type OpenRouterChatMessageWithCalls = OpenRouterChatMessage & {
+  tool_calls?: OpenRouterToolCall[];
 };
 
-type OpenAiToolCall = {
+type OpenRouterToolCall = {
   id: string;
   type: 'function';
   function: {
@@ -64,60 +64,23 @@ type OpenAiToolCall = {
   };
 };
 
-type GeminiSchema = {
-  type: 'OBJECT' | 'STRING' | 'NUMBER' | 'BOOLEAN' | 'ARRAY' | 'NULL';
-  description?: string;
-  properties?: Record<string, GeminiSchema>;
-  required?: string[];
-  items?: GeminiSchema | GeminiSchema[];
-  enum?: unknown[];
-};
-
-type GeminiPart =
-  | { text: string }
-  | { functionCall: { name: string; args?: Record<string, unknown> | string } }
-  | { functionResponse: { name: string; response?: unknown } };
-
-type GeminiContent = {
-  role: 'user' | 'model' | 'tool';
-  parts: GeminiPart[];
-};
-
-type GeminiGenerateContentResponse = {
-  candidates?: Array<{
-    content?: GeminiContent;
-    finishReason?: string;
-  }>;
-};
-
-const DEFAULT_MAX_TURNS = 6;
+const DEFAULT_MAX_TURNS = 8;
 
 export async function runLlmSession(
   script: LlmMessage[],
   options: LlmSessionOptions = {},
 ): Promise<LlmSessionResult> {
-  const provider = options.provider ?? (process.env.LLM_PROVIDER as SupportedProvider | undefined) ?? 'openai';
-
-  switch (provider) {
-    case 'openai':
-    case 'openrouter':
-      return runOpenAiCompatibleSession(script, { ...options, provider });
-    case 'gemini':
-      return runGeminiSession(script, { ...options, provider });
-    default:
-      throw new Error(`Unsupported LLM provider: ${provider}`);
+  const provider = options.provider ?? 'openrouter';
+  if (provider !== 'openrouter') {
+    throw new Error(`Unsupported LLM provider: ${provider}`);
   }
+  return runOpenRouterSession(script, options);
 }
 
-interface OpenAiSessionOptions extends LlmSessionOptions {
-  provider: 'openai' | 'openrouter';
-}
-
-async function runOpenAiCompatibleSession(
+async function runOpenRouterSession(
   script: LlmMessage[],
-  options: OpenAiSessionOptions,
+  options: LlmSessionOptions,
 ): Promise<LlmSessionResult> {
-  const provider = options.provider;
   const apiKey = options.apiKey ?? process.env.LLM_PROVIDER_API_KEY;
   if (!apiKey) {
     throw new Error('LLM_PROVIDER_API_KEY is required to run LLM-backed evals.');
@@ -136,18 +99,17 @@ async function runOpenAiCompatibleSession(
   const temperature =
     typeof options.temperature === 'number'
       ? options.temperature
-      : coerceNumber(process.env.LLM_TEMPERATURE, 0);
+      : coerceNumber(process.env.LLM_TEMPERATURE, 0.1);
   const maxTurns = options.maxTurns ?? coerceNumber(process.env.LLM_MAX_TURNS, DEFAULT_MAX_TURNS);
 
-  const messages: OpenAiChatMessage[] = [
+  const messages: OpenRouterChatMessage[] = [
     { role: 'system', content: systemPrompt() },
     ...script.map((entry) => ({ role: entry.role, content: entry.content })),
   ];
 
   const transcript: TranscriptMessage[] = [{ role: 'system', content: systemPrompt() }];
   for (const entry of script) {
-    const role = entry.role === 'assistant' ? 'assistant' : entry.role;
-    transcript.push({ role, content: entry.content });
+    transcript.push({ role: entry.role, content: entry.content });
   }
 
   const tools = Object.values(TOOL_DEFINITIONS).map((definition) => ({
@@ -167,10 +129,10 @@ async function runOpenAiCompatibleSession(
       temperature,
       messages,
       tools,
-      tool_choice: options.toolChoice ?? 'auto',
+      tool_choice: options.toolChoice ?? 'required',
     };
 
-    const response = await callOpenAiChatCompletion(baseUrl, apiKey, payload, provider);
+    const response = await callOpenRouterChatCompletion(baseUrl, apiKey, payload);
     const choice = response.choices[0];
     if (!choice) {
       throw new Error('LLM returned no choices.');
@@ -191,7 +153,8 @@ async function runOpenAiCompatibleSession(
 
       for (const toolCall of message.tool_calls) {
         const toolName = toolCall.function.name as ToolName;
-        const parsedArgs = safeParseToolArguments(toolCall.function.arguments);
+        const definition = TOOL_DEFINITIONS[toolName];
+        const parsedArgs = safeParseToolArguments(toolCall.function.arguments, definition);
         let result: unknown = undefined;
         let error: string | undefined;
         try {
@@ -231,12 +194,11 @@ async function runOpenAiCompatibleSession(
   return { transcript, invocations };
 }
 
-async function callOpenAiChatCompletion(
+async function callOpenRouterChatCompletion(
   baseUrl: string,
   apiKey: string,
   payload: Record<string, unknown>,
-  _provider: 'openai' | 'openrouter',
-): Promise<OpenAiChatCompletionResponse> {
+): Promise<OpenRouterChatCompletionResponse> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${apiKey}`,
@@ -253,249 +215,97 @@ async function callOpenAiChatCompletion(
     throw new Error(`Chat completion failed (${response.status}): ${text}`);
   }
 
-  return (await response.json()) as OpenAiChatCompletionResponse;
+  return (await response.json()) as OpenRouterChatCompletionResponse;
 }
 
-function buildToolCallSummary(message: OpenAiChatMessageWithCalls): string {
+function buildToolCallSummary(message: OpenRouterChatMessageWithCalls): string {
   const lines: string[] = [];
   if (message.content && message.content.trim().length > 0) {
     lines.push(message.content.trim());
   }
   if (message.tool_calls) {
     for (const call of message.tool_calls) {
-      lines.push(
-        `tool_call ${call.function.name}: ${call.function.arguments ?? ''}`,
-      );
+      lines.push(`tool_call ${call.function.name}: ${call.function.arguments ?? ''}`);
     }
   }
   return lines.join('\n');
 }
 
-interface GeminiSessionOptions extends LlmSessionOptions {
-  provider: 'gemini';
-}
-
-async function runGeminiSession(
-  script: LlmMessage[],
-  options: GeminiSessionOptions,
-): Promise<LlmSessionResult> {
-  const apiKey = options.apiKey ?? process.env.LLM_PROVIDER_API_KEY;
-  if (!apiKey) {
-    throw new Error('LLM_PROVIDER_API_KEY is required to run Gemini-backed evals.');
-  }
-
-  const baseUrl = options.baseUrl ?? process.env.LLM_PROVIDER_BASE_URL;
-  if (!baseUrl) {
-    throw new Error('LLM_PROVIDER_BASE_URL must be set to run Gemini-backed evals.');
-  }
-  const endpoint = buildGeminiEndpoint(baseUrl, apiKey);
-  const temperature =
-    typeof options.temperature === 'number'
-      ? options.temperature
-      : coerceNumber(process.env.LLM_TEMPERATURE, 0);
-  const maxTurns = options.maxTurns ?? coerceNumber(process.env.LLM_MAX_TURNS, DEFAULT_MAX_TURNS);
-
-  const transcript: TranscriptMessage[] = [{ role: 'system', content: systemPrompt() }];
-  const contents: GeminiContent[] = [];
-
-  const systemInstruction: GeminiContent = {
-    role: 'model',
-    parts: [{ text: systemPrompt() }],
-  };
-
-  for (const entry of script) {
-    if (entry.role === 'system') {
-      systemInstruction.parts.push({ text: entry.content });
-      transcript.push({ role: 'system', content: entry.content });
-      continue;
-    }
-
-    const geminiRole: 'user' | 'model' = entry.role === 'assistant' ? 'model' : 'user';
-    contents.push({ role: geminiRole, parts: [{ text: entry.content }] });
-    transcript.push({ role: entry.role, content: entry.content });
-  }
-
-  const functionDeclarations = Object.values(TOOL_DEFINITIONS).map((definition) => ({
-    name: definition.name,
-    description: definition.description,
-    parameters: convertSchemaToGemini(definition),
-  }));
-
-  const invocations: ToolInvocationRecord[] = [];
-
-  for (let turn = 0; turn < maxTurns; turn += 1) {
-    const requestBody = {
-      contents,
-      tools: [{ functionDeclarations }],
-      systemInstruction,
-      generationConfig: {
-        temperature,
-      },
-    };
-
-    const response = await callGeminiGenerateContent(endpoint, requestBody);
-    const candidate = response.candidates?.[0];
-    if (!candidate || !candidate.content) {
-      throw new Error('Gemini returned no candidates.');
-    }
-
-    const assistantContent = candidate.content;
-    contents.push(assistantContent);
-
-    const textSegments = assistantContent.parts
-      .filter((part): part is { text: string } => 'text' in part)
-      .map((part) => part.text)
-      .filter((segment) => segment && segment.trim().length > 0);
-    if (textSegments.length > 0) {
-      transcript.push({ role: 'assistant', content: textSegments.join('\n') });
-    }
-
-    const toolCalls = assistantContent.parts.filter((part): part is { functionCall: { name: string; args?: Record<string, unknown> | string } } =>
-      'functionCall' in part,
-    );
-
-    if (toolCalls.length > 0) {
-      for (const call of toolCalls) {
-        const toolName = call.functionCall.name as ToolName;
-        const parsedArgs = normaliseGeminiArgs(call.functionCall.args);
-        let result: unknown = undefined;
-        let error: string | undefined;
-        try {
-          result = await runTool({ name: toolName, arguments: parsedArgs });
-        } catch (toolError) {
-          error = (toolError as Error).message ?? 'Unknown tool error';
-        }
-
-        invocations.push({ name: toolName, arguments: parsedArgs, response: result, error });
-        transcript.push({
-          role: 'assistant',
-          content: `tool_call ${toolName}: ${JSON.stringify(parsedArgs)}`,
-        });
-
-        const responseContent: GeminiContent = {
-          role: 'tool',
-          parts: [
-            {
-              functionResponse: {
-                name: toolName,
-                response: error ? { error } : result ?? null,
-              },
-            },
-          ],
-        };
-        contents.push(responseContent);
-        transcript.push({
-          role: 'tool',
-          content: JSON.stringify({ name: toolName, response: error ? { error } : result ?? null }),
-        });
-      }
-      continue;
-    }
-
-    const finishReason = candidate.finishReason?.toUpperCase();
-    if (!finishReason || finishReason === 'STOP' || finishReason === 'FINISH' || finishReason === 'MAX_TOKENS') {
-      break;
-    }
-  }
-
-  return { transcript, invocations };
-}
-
-function buildGeminiEndpoint(baseUrl: string, apiKey: string): string {
-  try {
-    const url = new URL(baseUrl);
-    url.searchParams.set('key', apiKey);
-    return url.toString();
-  } catch {
-    const separator = baseUrl.includes('?') ? '&' : '?';
-    return `${baseUrl}${separator}key=${apiKey}`;
-  }
-}
-
-async function callGeminiGenerateContent(endpoint: string, body: unknown): Promise<GeminiGenerateContentResponse> {
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Gemini generateContent failed (${response.status}): ${text}`);
-  }
-
-  return (await response.json()) as GeminiGenerateContentResponse;
-}
-
-function convertSchemaToGemini(definition: ToolDefinition): GeminiSchema {
-  return mapSchema(definition.inputSchema as ToolSchema);
-}
-
 function coerceNumber(value: string | undefined, fallback: number): number {
-  if (value === undefined || value === null || value.trim() === '') {
+  if (!value || value.trim() === '') {
     return fallback;
   }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function mapSchema(schema: ToolSchema): GeminiSchema {
-  const type = schema.type?.toLowerCase();
-  switch (type) {
-    case 'object':
-      return {
-        type: 'OBJECT',
-        description: schema.description,
-        properties: schema.properties ? mapProperties(schema.properties) : undefined,
-        required: schema.required,
-      };
-    case 'array':
-      return {
-        type: 'ARRAY',
-        description: schema.description,
-        items: Array.isArray(schema.items)
-          ? schema.items.map((item) => mapSchema(item as ToolSchema))
-          : schema.items
-          ? mapSchema(schema.items as ToolSchema)
-          : undefined,
-      };
-    case 'number':
-    case 'integer':
-      return { type: 'NUMBER', description: schema.description, enum: schema.enum };
-    case 'boolean':
-      return { type: 'BOOLEAN', description: schema.description, enum: schema.enum };
-    case 'string':
-      return { type: 'STRING', description: schema.description, enum: schema.enum };
-    case 'null':
-      return { type: 'NULL', description: schema.description };
-    default:
-      return { type: 'STRING', description: schema?.description };
-  }
-}
-
-function mapProperties(properties: Record<string, ToolSchema>): Record<string, GeminiSchema> {
-  return Object.fromEntries(
-    Object.entries(properties).map(([key, value]) => [key, mapSchema(value)]),
-  );
-}
-
-function normaliseGeminiArgs(args?: Record<string, unknown> | string): ToolArguments {
-  if (!args) {
-    return {};
-  }
-  if (typeof args === 'string') {
-    return safeParseToolArguments(args);
-  }
-  return args as ToolArguments;
-}
-
-function safeParseToolArguments(raw: string): ToolArguments {
+function safeParseToolArguments(raw: string, definition?: ToolDefinition): ToolArguments {
   if (!raw) return {};
   try {
     return JSON.parse(raw) as ToolArguments;
   } catch (error) {
+    const repaired = attemptRepair(raw, definition);
+    if (Object.keys(repaired).length > 0) {
+      return repaired;
+    }
     throw new Error(`Failed to parse tool arguments: ${(error as Error).message}`);
   }
+}
+
+function attemptRepair(raw: string, definition?: ToolDefinition): ToolArguments {
+  const result: Record<string, unknown> = {};
+  if (!definition?.inputSchema || !('properties' in definition.inputSchema)) {
+    return result;
+  }
+
+  const cleaned = raw.replace(/\s+/g, ' ');
+
+  const properties = definition.inputSchema.properties ?? {};
+  for (const [key, schema] of Object.entries(properties)) {
+    const value = extractValue(cleaned, key, schema.type ?? 'string');
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+
+  return result;
+}
+
+function extractValue(raw: string, key: string, type: string): unknown {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  const stringPattern = new RegExp(`${escapedKey}\s*[:=]\s*"([^"]*)"`, 'i');
+  const noQuotePattern = new RegExp(`${escapedKey}\s*[:=]\s*([^,}\s]+)`, 'i');
+
+  if (type === 'string' || type === undefined) {
+    const match = raw.match(stringPattern) || raw.match(noQuotePattern);
+    if (match) {
+      return stripMarkers(match[1]);
+    }
+  }
+
+  if (type === 'number') {
+    const match = raw.match(noQuotePattern);
+    if (match) {
+      const value = parseFloat(stripMarkers(match[1]));
+      if (!Number.isNaN(value)) {
+        return value;
+      }
+    }
+  }
+
+  if (type === 'boolean') {
+    const match = raw.match(noQuotePattern);
+    if (match) {
+      const normalized = stripMarkers(match[1]).toLowerCase();
+      if (normalized === 'true') return true;
+      if (normalized === 'false') return false;
+    }
+  }
+
+  return undefined;
+}
+
+function stripMarkers(value: string): string {
+  return value.split('<')[0].replace(/['"]+/g, '').trim();
 }

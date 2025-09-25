@@ -1,42 +1,28 @@
 # Evals
 
-Store evaluation scenarios, fixtures, and run artifacts here. Place scenario definitions in `scenarios/` and the JSONL logs or diff outputs from each run in `logs/`.
+This directory stores the flow-level evaluation scenarios. Each scenario checks that a single MCP tool satisfies a support request end-to-end. We assert only the final outcome—extra tool calls are tolerated unless they fail.
 
-## Running Evals
-- `npm run eval` – Executes scenarios in deterministic **tool mode** using whatever adapter is currently configured (mock by default).
-- `npm run eval:llm` – Drives the same scenarios end-to-end with an LLM choosing tools. Supply `LLM_PROVIDER` or pass `--provider` to target OpenAI, OpenRouter, or Gemini and set `LLM_MODEL`, `LLM_PROVIDER_API_KEY`, and `LLM_PROVIDER_BASE_URL` (see `.env.example`).
+## Running evals
+- `npm run eval` – deterministic mode. Calls each flow directly with the mock adapter (or your live adapter once you swap it in).
+- `npm run eval:llm` – OpenRouter LLM drives the same scenarios. The harness only verifies that the required flow tool appears somewhere in the sequence and that the assertions pass.
+- Optional logging: set `EVAL_LOGS_ENABLED=true` in `.env` to write JSONL transcripts + tool-call summaries to `evals/logs/`.
 
-### Conversation Scripts
-When `--llm` is used the runner reads the optional `conversation` array from each scenario. These messages seed the chat session before the model begins issuing tool calls. Keep the conversation concise and representative of the support workflow you want to validate.
+## Scenario format
+- `id` – Unique identifier.
+- `description` – What outcome the scenario validates.
+- `conversation` – A short prompt that sounds like a support agent (used in LLM mode).
+- `steps` – Outcome checks for a single flow tool:
+  - `tool` – flow tool name (e.g., `loyalty.issueGoodwill`).
+  - `arguments` – JSON payload passed to the flow.
+  - `expect.status` – Expected success/error.
+  - `expect.assert` – Assertions against the response (path + constraint).
 
-## Scenario Format
-- `id` – Stable identifier for the run.
-- `description` – Plain-language explanation of the goal.
-- `conversation` – (Optional) Ordered chat messages (`role`, `content`) that seed LLM evals. Only used when running with `--llm`.
-- `steps` – Ordered tool invocations the MCP server should execute. Each step supports:
-  - `label` – Human-readable intent.
-  - `tool` – The MCP tool name (e.g., `support.lookupCustomer`).
-  - `arguments` – JSON arguments passed to the tool.
-  - `capture` – Optional map of tokens to JSON path expressions used later via `{{token}}` interpolation.
-  - `expect` – Assertions about the tool response:
-    - `status` – Expected `success` or `error`.
-    - `assert` – Array of checks (path + constraint such as `equals`, `contains`, `minLength`, `exists`, `isNull`).
+## Current scenarios (Skyward Rewards)
+- `support_lookup_customer` → `customer.snapshot`
+- `support_issue_goodwill` → `loyalty.issueGoodwill`
+- `support_offer_assignment` → `offers.assign`
+- `support_offer_claim` → `offers.claim`
+- `support_redeem_reward` → `rewards.redeem`
+- `support_restock_reward` → `rewards.restock`
 
-## Current Scenarios (Loyalty Support Example)
-- `support_lookup_customer` – Fetches a customer by email with recent activity snapshots; validates that responses include tier, balances, and audit metadata.
-- `support_issue_goodwill` – Applies goodwill points and verifies the adjustment shows up in activity summaries.
-- `support_redeem_reward` – Redeems a catalog reward for a customer and confirms the transaction details.
-- `support_restock_reward` – Restocks limited inventory rewards and confirms catalog changes.
-- `support_offer_assignment` – Assigns a promotional offer to a customer and verifies availability.
-- `support_offer_claim` – Claims an assigned offer and confirms the associated reward fulfillment.
-
-### Domain context
-The bundled mock data models a loyalty program with three exemplar customers (Alicia, Marcus, Jasmine), a reward catalog (espresso upgrade, priority boarding, partner gift card), and promotional offers. Scenarios walk through common support workflows—issuing goodwill credits, assisting with reward redemption, and managing offer fulfillment—so you can see how to structure intent-driven tools around a realistic domain. Swap in your own dataset and scenarios to match your org.
-- `support_lookup_customer` – Fetches a customer by email with recent activity snapshots.
-- `support_issue_goodwill` – Applies goodwill points and verifies the adjustment shows up in activity summaries.
-- `support_redeem_reward` – Redeems a catalog reward for a customer and confirms the transaction details.
-- `support_restock_reward` – Restocks limited inventory rewards and confirms catalog changes.
-- `support_offer_assignment` – Assigns a promotional offer to a customer and verifies availability.
-- `support_offer_claim` – Claims an assigned offer and confirms the associated reward fulfillment.
-
-Use these as templates when authoring additional support-focused evals (e.g., tier escalations, contact preference updates, or failed redemption recovery). The mock HTTP adapter keeps runs deterministic; swap in a live adapter when you are ready to speak to real APIs.
+Use these as templates: keep conversations realistic, call a single flow tool, and assert the business outcome—not the intermediate steps. Adjust or replace the mock adapter so the flows target your real systems and extend the scenarios to cover your critical workflows.

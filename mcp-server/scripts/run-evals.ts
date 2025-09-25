@@ -3,11 +3,17 @@
 /// <reference types="node" />
 import fs from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { runTool, ToolCall } from '../src';
 import { ToolName, ToolArguments } from '../src/tools';
-import { runLlmSession, SupportedProvider } from '../src/runtime/llm-session';
+import { runLlmSession, TranscriptMessage } from '../src/runtime/llm-session';
+import { loadEnv } from '../src/config/load-env';
+import { writeEvalLog } from '../src/evals/log_writer';
+
+loadEnv();
+const loggingEnabled = String(process.env.EVAL_LOGS_ENABLED ?? '').toLowerCase() === 'true';
 
 type Assertion = {
   path: string;
@@ -42,12 +48,30 @@ type EvalResult = {
   failures: string[];
 };
 
+type ToolCallLog = {
+  label: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  status: 'success' | 'error';
+  error?: string;
+};
+
+type ScenarioExecution = {
+  result: EvalResult;
+  toolCalls: ToolCallLog[];
+  transcript?: TranscriptMessage[];
+};
+
 type ConversationMessage = {
   role: 'user' | 'assistant' | 'system';
   content: string;
 };
 
 const scenarioDir = path.join(__dirname, '..', 'evals', 'scenarios');
+
+function createRunId() {
+  return `${Date.now().toString(36)}-${randomUUID()}`;
+}
 
 async function main() {
   const argv = await yargs(hideBin(process.argv))
@@ -64,19 +88,12 @@ async function main() {
       default: false,
       describe: 'Run scenarios with an LLM choosing tools (defaults to deterministic tool harness).',
     })
-    .option('provider', {
-      type: 'string',
-      choices: ['openai', 'openrouter', 'gemini'],
-      describe: 'LLM provider to drive evals when using --llm.',
-    })
     .parse();
 
   const useLlm = Boolean(argv.llm);
-  const provider = argv.provider as SupportedProvider | undefined;
   if (useLlm) {
-    const selectedProvider = provider ?? (process.env.LLM_PROVIDER as SupportedProvider | undefined) ?? 'openai';
     console.log(
-      `⚙️  Running evals with LLM tool selection (provider: ${selectedProvider}). Ensure LLM_PROVIDER, LLM_PROVIDER_API_KEY, and LLM_PROVIDER_BASE_URL are set.`,
+      '⚙️  Running evals with LLM tool selection (provider: openrouter). Ensure LLM_MODEL, LLM_PROVIDER_API_KEY, and LLM_PROVIDER_BASE_URL are set.',
     );
   } else {
     console.log('⚙️  Running deterministic tool evals.');
@@ -88,27 +105,40 @@ async function main() {
     process.exit(1);
   }
 
-  const results: EvalResult[] = [];
+  const executions: ScenarioExecution[] = [];
   for (const scenario of scenarios) {
-    const result =
+    const execution =
       useLlm
-        ? await runScenarioLlm(scenario, argv.verbose ?? false, provider)
+        ? await runScenarioLlm(scenario, argv.verbose ?? false)
         : await runScenarioTools(scenario, argv.verbose ?? false);
-    results.push(result);
+    executions.push(execution);
+
+    if (loggingEnabled) {
+      writeEvalLog({
+        timestamp: new Date().toISOString(),
+        runId: createRunId(),
+        scenario: scenario.id,
+        mode: useLlm ? 'llm' : 'tools',
+        status: execution.result.passed ? 'passed' : 'failed',
+        failures: execution.result.failures,
+        toolCalls: execution.toolCalls,
+        transcript: execution.transcript?.map((entry) => ({ role: entry.role, content: entry.content })),
+      });
+    }
   }
 
-  const passed = results.filter((result) => result.passed).length;
-  const failed = results.length - passed;
+  const passed = executions.filter((execution) => execution.result.passed).length;
+  const failed = executions.length - passed;
 
   console.log('\n=== Eval Summary ===');
-  console.log(`Scenarios run: ${results.length}`);
+  console.log(`Scenarios run: ${executions.length}`);
   console.log(`Passed: ${passed}`);
   console.log(`Failed: ${failed}`);
 
   if (failed > 0) {
-    for (const result of results.filter((r) => !r.passed)) {
-      console.log(`\n❌ ${result.scenario}`);
-      result.failures.forEach((failure) => console.log(`  - ${failure}`));
+    for (const execution of executions.filter((ex) => !ex.result.passed)) {
+      console.log(`\n❌ ${execution.result.scenario}`);
+      execution.result.failures.forEach((failure) => console.log(`  - ${failure}`));
     }
     process.exit(1);
   }
@@ -130,27 +160,49 @@ function loadScenarios(filter?: string): Scenario[] {
   return scenarios;
 }
 
-function compareArguments(expected: Record<string, unknown>, actual: Record<string, unknown>): string[] {
-  const issues: string[] = [];
-  for (const [key, expectedValue] of Object.entries(expected)) {
-    if (!(key in actual)) {
-      issues.push(`missing argument ${key}`);
-      continue;
-    }
-    const actualValue = actual[key];
-    if (!deepEqual(actualValue, expectedValue)) {
-      issues.push(
-        `argument ${key} expected ${JSON.stringify(expectedValue)} but received ${JSON.stringify(actualValue)}`,
-      );
-    }
+function cloneArgs(input: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!input) {
+    return {};
   }
-  return issues;
+  try {
+    return JSON.parse(JSON.stringify(input));
+  } catch (_error) {
+    return { ...input };
+  }
 }
 
-async function runScenarioTools(scenario: Scenario, verbose: boolean): Promise<EvalResult> {
+function formatError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (error === undefined || error === null) {
+    return '';
+  }
+  try {
+    return JSON.stringify(error);
+  } catch (_error) {
+    return String(error);
+  }
+}
+
+function appendError(existing: string | undefined, addition: string | undefined): string | undefined {
+  if (!addition || addition.trim() === '') {
+    return existing;
+  }
+  if (!existing || existing.trim() === '') {
+    return addition;
+  }
+  return `${existing}; ${addition}`;
+}
+
+async function runScenarioTools(scenario: Scenario, verbose: boolean): Promise<ScenarioExecution> {
   console.log(`\n=== ${scenario.id} ===`);
   const captures: Record<string, unknown> = {};
   const failures: string[] = [];
+  const toolCalls: ToolCallLog[] = [];
 
   for (const [index, step] of scenario.steps.entries()) {
     const stepLabel = step.label ?? `Step ${index + 1}`;
@@ -176,18 +228,29 @@ async function runScenarioTools(scenario: Scenario, verbose: boolean): Promise<E
       response = undefined;
     }
 
+
+    const callLog: ToolCallLog = {
+      label: stepLabel,
+      name: step.tool,
+      arguments: cloneArgs(resolvedArgs as Record<string, unknown>),
+      status,
+      error: status === 'error' ? formatError(error) : undefined,
+    };
+
     const expectedStatus = step.expect?.status ?? 'success';
     if (status !== expectedStatus) {
+      const mismatchMessage = `expected status ${expectedStatus} but received ${status}`;
       failures.push(
-        `${stepLabel}: expected status ${expectedStatus} but received ${status}${
+        `${stepLabel}: ${mismatchMessage}${
           error ? ` (${(error as Error).message})` : ''
         }`,
       );
+      callLog.error = appendError(callLog.error, mismatchMessage);
       if (verbose && error) {
         console.error(error);
       }
       if (status === 'error') {
-        // Do not process captures/assertions when the tool failed unexpectedly.
+        toolCalls.push(callLog);
         continue;
       }
     }
@@ -204,111 +267,147 @@ async function runScenarioTools(scenario: Scenario, verbose: boolean): Promise<E
         const failure = evaluateAssertion(assertion, value, captures);
         if (failure) {
           failures.push(`${stepLabel}: ${failure}`);
+          callLog.error = appendError(callLog.error, failure);
         }
       }
     }
+
+    toolCalls.push(callLog);
   }
 
-  if (failures.length === 0) {
-    console.log('✅ Passed');
-    return { scenario: scenario.id, passed: true, failures: [] };
-  }
+  const passed = failures.length === 0;
+  console.log(passed ? '✅ Passed' : '❌ Failed');
 
-  console.log('❌ Failed');
-  return { scenario: scenario.id, passed: false, failures };
+  return {
+    result: { scenario: scenario.id, passed, failures },
+    toolCalls,
+  };
 }
 
 async function runScenarioLlm(
   scenario: Scenario,
   verbose: boolean,
-  provider?: SupportedProvider,
-): Promise<EvalResult> {
+): Promise<ScenarioExecution> {
   console.log(`\n=== ${scenario.id} ===`);
   const failures: string[] = [];
   const captures: Record<string, unknown> = {};
+  const toolCalls: ToolCallLog[] = [];
 
   if (!scenario.conversation || scenario.conversation.length === 0) {
     failures.push('Scenario does not define a conversation script for LLM mode. Add a "conversation" array.');
     console.log('❌ Failed');
-    return { scenario: scenario.id, passed: false, failures };
+    return {
+      result: { scenario: scenario.id, passed: false, failures },
+      toolCalls,
+      transcript: [],
+    };
   }
 
   let sessionResult;
   try {
-    sessionResult = await runLlmSession(scenario.conversation, { verbose, provider });
+    sessionResult = await runLlmSession(scenario.conversation, { verbose });
   } catch (error) {
     const message = (error as Error).message ?? 'Unknown LLM session error';
     failures.push(`LLM session failed: ${message}`);
     console.log('❌ Failed');
-    return { scenario: scenario.id, passed: false, failures };
+    return {
+      result: { scenario: scenario.id, passed: false, failures },
+      toolCalls,
+      transcript: [],
+    };
   }
 
-  const invocations = sessionResult.invocations;
+  const invocations = sessionResult.invocations.map((call, index) => ({ ...call, index, matched: false }));
+  const transcript = sessionResult.transcript;
 
-  scenario.steps.forEach((step, index) => {
-    const stepLabel = step.label ?? `Step ${index + 1}`;
-    const invocation = invocations[index];
+  for (let stepIndex = 0; stepIndex < scenario.steps.length; stepIndex += 1) {
+    const step = scenario.steps[stepIndex];
+    const stepLabel = step.label ?? `Step ${stepIndex + 1}`;
 
-    if (!invocation) {
-      failures.push(`${stepLabel}: model skipped expected tool ${step.tool}.`);
-      return;
+    const match = invocations.find((call) => !call.matched && call.name === step.tool);
+    if (!match) {
+      const message = `model never called ${step.tool}.`;
+      failures.push(`${stepLabel}: ${message}`);
+      toolCalls.push({
+        label: stepLabel,
+        name: step.tool,
+        arguments: {},
+        status: 'error',
+        error: message,
+      });
+      continue;
     }
 
-    if (invocation.name !== step.tool) {
-      failures.push(
-        `${stepLabel}: expected tool ${step.tool} but model invoked ${invocation.name}.`,
-      );
-    }
+    match.matched = true;
+    const callLog: ToolCallLog = {
+      label: stepLabel,
+      name: match.name,
+      arguments: cloneArgs(match.arguments as Record<string, unknown>),
+      status: match.error ? 'error' : 'success',
+      error: match.error,
+    };
 
-    const expectedArgs = (interpolate(step.arguments ?? {}, captures) ?? {}) as Record<string, unknown>;
-    const actualArgs = (invocation.arguments ?? {}) as Record<string, unknown>;
-    const argIssues = compareArguments(expectedArgs, actualArgs);
-    argIssues.forEach((issue) => failures.push(`${stepLabel}: ${issue}`));
 
     const expectedStatus = step.expect?.status ?? 'success';
-    if (expectedStatus === 'success' && invocation.error) {
-      failures.push(`${stepLabel}: tool returned error "${invocation.error}" but success expected.`);
-      return;
+    if (expectedStatus === 'success' && match.error) {
+      const message = `tool returned error "${match.error}" but success expected.`;
+      failures.push(`${stepLabel}: ${message}`);
+      callLog.error = appendError(callLog.error, message);
+      toolCalls.push(callLog);
+      continue;
     }
-    if (expectedStatus === 'error' && !invocation.error) {
-      failures.push(`${stepLabel}: expected tool error but invocation succeeded.`);
+    if (expectedStatus === 'error' && !match.error) {
+      const message = 'expected tool error but invocation succeeded.';
+      failures.push(`${stepLabel}: ${message}`);
+      callLog.error = appendError(callLog.error, message);
     }
 
-    if (!invocation.error && invocation.response && step.capture) {
+    if (!match.error && match.response && step.capture) {
       for (const [token, pathExpression] of Object.entries(step.capture)) {
-        captures[token] = getByPath(invocation.response, pathExpression);
+        captures[token] = getByPath(match.response, pathExpression);
       }
     }
 
-    if (!invocation.error && step.expect?.assert) {
+    if (!match.error && step.expect?.assert) {
       for (const assertion of step.expect.assert) {
-        const value = getByPath(invocation.response, assertion.path);
+        const value = getByPath(match.response, assertion.path);
         const failure = evaluateAssertion(assertion, value, captures);
         if (failure) {
           failures.push(`${stepLabel}: ${failure}`);
+          callLog.error = appendError(callLog.error, failure);
         }
       }
     }
 
     if (verbose) {
       console.log(`→ ${stepLabel}`);
-      console.log(`  - Tool: ${invocation.name}`);
-      console.log(`  - Args: ${JSON.stringify(actualArgs)}`);
+      console.log(`  - Tool: ${match.name}`);
+      console.log(`  - Args: ${JSON.stringify(match.arguments ?? {})}`);
     }
-  });
 
-  if (invocations.length > scenario.steps.length) {
-    const extra = invocations.slice(scenario.steps.length).map((call) => call.name).join(', ');
-    failures.push(`Model invoked unexpected extra tools: ${extra}`);
+    toolCalls.push(callLog);
   }
 
-  if (failures.length === 0) {
-    console.log('✅ Passed');
-    return { scenario: scenario.id, passed: true, failures: [] };
-  }
+  invocations
+    .filter((call) => !call.matched)
+    .forEach((call) => {
+      toolCalls.push({
+        label: `Additional tool call ${toolCalls.length + 1}`,
+        name: call.name,
+        arguments: cloneArgs(call.arguments as Record<string, unknown>),
+        status: call.error ? 'error' : 'success',
+        error: call.error ? appendError(undefined, `additional tool ${call.name} returned error: ${call.error}`) : undefined,
+      });
+    });
 
-  console.log('❌ Failed');
-  return { scenario: scenario.id, passed: false, failures };
+  const passed = failures.length === 0;
+  console.log(passed ? '✅ Passed' : '❌ Failed');
+
+  return {
+    result: { scenario: scenario.id, passed, failures },
+    toolCalls,
+    transcript,
+  };
 }
 
 function interpolate(input: unknown, captures: Record<string, unknown>): unknown {

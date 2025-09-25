@@ -71,6 +71,46 @@ interface ClaimOfferArgs {
   customerOfferId: string;
 }
 
+interface SnapshotCustomerFlowArgs {
+  email: string;
+  includeHistory?: boolean;
+  historyLimit?: number;
+}
+
+interface IssueGoodwillFlowArgs {
+  email: string;
+  points: number;
+  reason: string;
+  channel?: string;
+  historyLimit?: number;
+}
+
+interface AssignOfferFlowArgs {
+  email: string;
+  offerId?: string;
+  expiresAt?: string;
+}
+
+interface ClaimOfferFlowArgs {
+  email: string;
+  customerOfferId?: string;
+}
+
+interface RedeemRewardFlowArgs {
+  email: string;
+  rewardId?: string;
+  maxCost?: number;
+  channel?: string;
+  note?: string;
+}
+
+interface RestockRewardFlowArgs {
+  rewardId?: string;
+  quantity?: number;
+  targetInventory?: number;
+  active?: boolean;
+}
+
 export async function lookupCustomer(args: LookupCustomerArgs) {
   const identifier = await resolveCustomerId(args);
   const { data: customer } = await httpGet<CustomerDetailResponse>(`/customers/${identifier}`);
@@ -253,6 +293,147 @@ export async function claimOffer(args: ClaimOfferArgs) {
   );
 
   return data;
+}
+
+export async function snapshotCustomerFlow(args: SnapshotCustomerFlowArgs) {
+  const { customer, history } = await lookupCustomer({
+    email: args.email,
+    includeHistory: args.includeHistory ?? true,
+    historyLimit: args.historyLimit,
+  });
+  const summary = await activitySummary({
+    customerId: customer.id,
+    limit: args.historyLimit ?? 5,
+  });
+  return { customer, history, summary };
+}
+
+export async function issueGoodwillFlow(args: IssueGoodwillFlowArgs) {
+  const { customer } = await lookupCustomer({ email: args.email, includeHistory: false });
+  const result = await issueGoodwill({
+    customerId: customer.id,
+    points: args.points,
+    reason: args.reason,
+    channel: args.channel,
+  });
+  const summary = await activitySummary({ customerId: customer.id, limit: args.historyLimit ?? 5 });
+  return {
+    customer: result.customer,
+    activity: result.activity,
+    summary,
+  };
+}
+
+export async function assignOfferFlow(args: AssignOfferFlowArgs) {
+  const { customer } = await lookupCustomer({ email: args.email, includeHistory: false });
+  let offerId = args.offerId;
+  if (!offerId) {
+    const { offers } = await offerCatalog({ onlyActive: true });
+    if (!offers.length) {
+      throw new Error('No active offers available to assign.');
+    }
+    offerId = offers[0].id;
+  }
+  const customerOffer = await assignOffer({ customerId: customer.id, offerId, expiresAt: args.expiresAt });
+  const offers = await customerOffers({ customerId: customer.id, includeExpired: false });
+  return {
+    customer,
+    customerOffer,
+    offers: offers.offers,
+  };
+}
+
+export async function claimOfferFlow(args: ClaimOfferFlowArgs) {
+  const { customer } = await lookupCustomer({ email: args.email, includeHistory: false });
+  let customerOfferId = args.customerOfferId;
+  let offersSnapshot = await customerOffers({ customerId: customer.id, includeExpired: false });
+
+  if (!customerOfferId) {
+    const available = offersSnapshot.offers.find((offer) => offer.status === 'available');
+    if (!available) {
+      throw new Error('No available offers to claim.');
+    }
+    customerOfferId = available.id;
+  }
+
+  const claim = await claimOffer({ customerId: customer.id, customerOfferId });
+  offersSnapshot = await customerOffers({ customerId: customer.id, includeExpired: false });
+
+  return {
+    customer: claim.customer,
+    claim,
+    offers: offersSnapshot.offers,
+  };
+}
+
+export async function redeemRewardFlow(args: RedeemRewardFlowArgs) {
+  const { customer } = await lookupCustomer({ email: args.email, includeHistory: false });
+  let rewardId = args.rewardId;
+  if (!rewardId) {
+    const { rewards } = await catalogSnapshot({ onlyActive: true, maxCost: args.maxCost });
+    if (!rewards.length) {
+      throw new Error('No reward found matching the requested criteria.');
+    }
+    rewardId = rewards[0].id;
+  }
+
+  const redemption = await redeemReward({
+    customerId: customer.id,
+    rewardId,
+    channel: args.channel ?? 'support',
+    note: args.note,
+  });
+
+  return {
+    customer: redemption.customer,
+    reward: redemption.reward,
+    activity: redemption.activity,
+  };
+}
+
+export async function restockRewardFlow(args: RestockRewardFlowArgs) {
+  const catalog = await catalogSnapshot({ onlyActive: false });
+  let reward = args.rewardId
+    ? catalog.rewards.find((entry) => entry.id === args.rewardId)
+    : catalog.rewards
+        .filter((entry) => typeof entry.inventory === 'number')
+        .sort((a, b) => (a.inventory ?? Infinity) - (b.inventory ?? Infinity))[0];
+
+  if (!reward && args.rewardId) {
+    const normalized = args.rewardId.replace(/[_\-]/g, ' ').toLowerCase();
+    reward = catalog.rewards.find(
+      (entry) =>
+        entry.id.toLowerCase().includes(normalized) ||
+        entry.name.toLowerCase().includes(normalized),
+    );
+  }
+
+  if (!reward) {
+    reward = catalog.rewards
+      .filter((entry) => typeof entry.inventory === 'number')
+      .sort((a, b) => (a.inventory ?? Infinity) - (b.inventory ?? Infinity))[0];
+  }
+
+  if (!reward) {
+    throw new Error('Unable to identify a reward to restock.');
+  }
+
+  const currentInventory = typeof reward.inventory === 'number' ? reward.inventory : 0;
+  const quantity = args.quantity ?? 0;
+  const targetInventory = args.targetInventory !== undefined
+    ? Math.max(0, Math.round(args.targetInventory))
+    : Math.max(0, currentInventory + Math.round(quantity));
+
+  const payload: Record<string, unknown> = { inventory: targetInventory };
+  if (typeof args.active === 'boolean') {
+    payload.active = args.active;
+  }
+
+  const { data } = await httpPatch<UpdateRewardResponse>(`/rewards/${reward.id}`, payload);
+
+  return {
+    reward: data.reward,
+  };
 }
 
 async function resolveCustomerId({ customerId, email }: LookupCustomerArgs) {

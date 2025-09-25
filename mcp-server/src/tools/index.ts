@@ -1,16 +1,12 @@
 import * as supportTools from './support';
 
 export type ToolName =
-  | 'support.lookupCustomer'
-  | 'support.activitySummary'
-  | 'support.issueGoodwill'
-  | 'support.redeemReward'
-  | 'support.catalogSnapshot'
-  | 'support.restockReward'
-  | 'support.offerCatalog'
-  | 'support.customerOffers'
-  | 'support.assignOffer'
-  | 'support.claimOffer';
+  | 'customer.snapshot'
+  | 'loyalty.issueGoodwill'
+  | 'offers.assign'
+  | 'offers.claim'
+  | 'rewards.redeem'
+  | 'rewards.restock';
 
 export type ToolArguments = Record<string, unknown>;
 export type ToolRunner = (args: ToolArguments) => Promise<unknown>;
@@ -39,21 +35,18 @@ interface ToolConfig extends ToolDefinition {
 }
 
 const TOOL_CONFIG: Record<ToolName, ToolConfig> = {
-  'support.lookupCustomer': {
-    name: 'support.lookupCustomer',
+  'customer.snapshot': {
+    name: 'customer.snapshot',
     description:
-      'Retrieve a customer profile (and optional recent history) by loyalty ID or email for support triage.',
+      'Return a customer profile, recent history, and activity summary. Example: {"email":"marcus.lee@example.com","includeHistory":true,"historyLimit":5}.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
+      required: ['email'],
       properties: {
-        customerId: {
-          type: 'string',
-          description: 'Known loyalty identifier if already available.',
-        },
         email: {
           type: 'string',
-          description: 'Customer email when ID is unknown.',
+          description: 'Customer email to snapshot.',
           format: 'email'
         },
         includeHistory: {
@@ -67,48 +60,25 @@ const TOOL_CONFIG: Record<ToolName, ToolConfig> = {
       },
     },
     runner: async (args) =>
-      supportTools.lookupCustomer({
-        customerId: optionalString(args.customerId),
-        email: optionalString(args.email),
-        includeHistory: optionalBoolean(args.includeHistory) ?? true,
+      supportTools.snapshotCustomerFlow({
+        email: requireString(args.email, 'email'),
+        includeHistory: optionalBoolean(args.includeHistory),
         historyLimit: optionalNumber(args.historyLimit),
       }),
   },
-  'support.activitySummary': {
-    name: 'support.activitySummary',
-    description: 'Summarise a customer loyalty activity stream for quick diagnostics.',
+  'loyalty.issueGoodwill': {
+    name: 'loyalty.issueGoodwill',
+    description:
+      'Apply goodwill points to a customer and return the updated balance, activity record, and summary. Example: {"email":"marcus.lee@example.com","points":500,"reason":"Delayed shipment credit"}.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
-      required: ['customerId'],
+      required: ['email', 'points', 'reason'],
       properties: {
-        customerId: {
+        email: {
           type: 'string',
-          description: 'Customer loyalty identifier to summarise.',
-        },
-        limit: {
-          type: 'number',
-          description: 'Limit the number of records analysed.',
-        },
-      },
-    },
-    runner: async (args) =>
-      supportTools.activitySummary({
-        customerId: requireString(args.customerId, 'customerId'),
-        limit: optionalNumber(args.limit),
-      }),
-  },
-  'support.issueGoodwill': {
-    name: 'support.issueGoodwill',
-    description: 'Issue goodwill loyalty points to resolve support escalations.',
-    inputSchema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['customerId', 'points', 'reason'],
-      properties: {
-        customerId: {
-          type: 'string',
-          description: 'Recipient loyalty identifier.',
+          description: 'Customer email to credit.',
+          format: 'email'
         },
         points: {
           type: 'number',
@@ -122,164 +92,38 @@ const TOOL_CONFIG: Record<ToolName, ToolConfig> = {
           type: 'string',
           description: 'Channel through which goodwill is communicated (email, phone, etc.).',
         },
+        historyLimit: {
+          type: 'number',
+          description: 'Activity records to include in the summary.',
+        },
       },
     },
     runner: async (args) =>
-      supportTools.issueGoodwill({
-        customerId: requireString(args.customerId, 'customerId'),
+      supportTools.issueGoodwillFlow({
+        email: requireString(args.email, 'email'),
         points: requireNumber(args.points, 'points'),
         reason: requireString(args.reason, 'reason'),
         channel: optionalString(args.channel),
+        historyLimit: optionalNumber(args.historyLimit),
       }),
   },
-  'support.redeemReward': {
-    name: 'support.redeemReward',
-    description: 'Redeem a loyalty reward on behalf of a customer.',
+  'offers.assign': {
+    name: 'offers.assign',
+    description:
+      'Assign an offer to a customer and return the updated offer list. Example: {"email":"marcus.lee@example.com","offerId":"offer-espresso-upgrade"}.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
-      required: ['customerId', 'rewardId'],
+      required: ['email'],
       properties: {
-        customerId: {
+        email: {
           type: 'string',
-          description: 'Loyalty identifier of the redeemer.',
-        },
-        rewardId: {
-          type: 'string',
-          description: 'Reward identifier to redeem.',
-        },
-        channel: {
-          type: 'string',
-          description: 'Fulfilment channel (support, digital, etc.).',
-        },
-        note: {
-          type: 'string',
-          description: 'Optional fulfilment note for audit trail.',
-        },
-      },
-    },
-    runner: async (args) =>
-      supportTools.redeemReward({
-        customerId: requireString(args.customerId, 'customerId'),
-        rewardId: requireString(args.rewardId, 'rewardId'),
-        channel: optionalString(args.channel),
-        note: optionalString(args.note),
-      }),
-  },
-  'support.catalogSnapshot': {
-    name: 'support.catalogSnapshot',
-    description: 'Inspect loyalty reward catalog availability and filters.',
-    inputSchema: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        onlyActive: {
-          type: 'boolean',
-          description: 'Restrict to active rewards.',
-        },
-        minInventory: {
-          type: 'number',
-          description: 'Filter rewards with at least this inventory.',
-        },
-        maxCost: {
-          type: 'number',
-          description: 'Upper bound cost to filter by.',
-        },
-      },
-    },
-    runner: async (args) =>
-      supportTools.catalogSnapshot({
-        onlyActive: optionalBoolean(args.onlyActive) ?? true,
-        minInventory: optionalNumber(args.minInventory),
-        maxCost: optionalNumber(args.maxCost),
-      }),
-  },
-  'support.restockReward': {
-    name: 'support.restockReward',
-    description: 'Adjust reward inventory or activation status.',
-    inputSchema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['rewardId', 'inventoryDelta'],
-      properties: {
-        rewardId: {
-          type: 'string',
-          description: 'Identifier of the reward to update.',
-        },
-        inventoryDelta: {
-          type: 'number',
-          description: 'Quantity to set inventory to (mock adapter interprets as new stock).',
-        },
-        active: {
-          type: 'boolean',
-          description: 'Optional override to toggle reward activity.',
-        },
-      },
-    },
-    runner: async (args) =>
-      supportTools.restockReward({
-        rewardId: requireString(args.rewardId, 'rewardId'),
-        inventoryDelta: requireNumber(args.inventoryDelta, 'inventoryDelta'),
-        active: optionalBoolean(args.active),
-      }),
-  },
-  'support.offerCatalog': {
-    name: 'support.offerCatalog',
-    description: 'List promotional offers that can be assigned to customers.',
-    inputSchema: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        onlyActive: {
-          type: 'boolean',
-          description: 'When true, exclude inactive or expired offers.',
-        },
-      },
-    },
-    runner: async (args) =>
-      supportTools.offerCatalog({
-        onlyActive: optionalBoolean(args.onlyActive) ?? true,
-      }),
-  },
-  'support.customerOffers': {
-    name: 'support.customerOffers',
-    description: 'Review offers assigned to an individual customer.',
-    inputSchema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['customerId'],
-      properties: {
-        customerId: {
-          type: 'string',
-          description: 'Customer loyalty identifier.',
-        },
-        includeExpired: {
-          type: 'boolean',
-          description: 'Include expired or redeemed offers.',
-        },
-      },
-    },
-    runner: async (args) =>
-      supportTools.customerOffers({
-        customerId: requireString(args.customerId, 'customerId'),
-        includeExpired: optionalBoolean(args.includeExpired),
-      }),
-  },
-  'support.assignOffer': {
-    name: 'support.assignOffer',
-    description: 'Assign an offer to a customer for future redemption.',
-    inputSchema: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['customerId', 'offerId'],
-      properties: {
-        customerId: {
-          type: 'string',
-          description: 'Customer loyalty identifier receiving the offer.',
+          description: 'Customer email to receive the offer.',
+          format: 'email'
         },
         offerId: {
           type: 'string',
-          description: 'Offer identifier to assign.',
+          description: 'Specific offer to assign (defaults to first active offer).',
         },
         expiresAt: {
           type: 'string',
@@ -289,34 +133,111 @@ const TOOL_CONFIG: Record<ToolName, ToolConfig> = {
       },
     },
     runner: async (args) =>
-      supportTools.assignOffer({
-        customerId: requireString(args.customerId, 'customerId'),
-        offerId: requireString(args.offerId, 'offerId'),
+      supportTools.assignOfferFlow({
+        email: requireString(args.email, 'email'),
+        offerId: optionalString(args.offerId),
         expiresAt: optionalString(args.expiresAt),
       }),
   },
-  'support.claimOffer': {
-    name: 'support.claimOffer',
-    description: 'Complete fulfilment of a previously assigned offer.',
+  'offers.claim': {
+    name: 'offers.claim',
+    description:
+      'Claim an assigned offer for a customer and confirm the outcome. Example: {"email":"alicia.patel@example.com","customerOfferId":"coffer-alicia-upgrade"}.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
-      required: ['customerId', 'customerOfferId'],
+      required: ['email'],
       properties: {
-        customerId: {
+        email: {
           type: 'string',
-          description: 'Customer loyalty identifier.',
+          description: 'Customer email whose offer should be claimed.',
+          format: 'email'
         },
         customerOfferId: {
           type: 'string',
-          description: 'Identifier of the assigned offer to claim.',
+          description: 'Specific customer offer to claim (defaults to first available).',
         },
       },
     },
     runner: async (args) =>
-      supportTools.claimOffer({
-        customerId: requireString(args.customerId, 'customerId'),
-        customerOfferId: requireString(args.customerOfferId, 'customerOfferId'),
+      supportTools.claimOfferFlow({
+        email: requireString(args.email, 'email'),
+        customerOfferId: optionalString(args.customerOfferId),
+      }),
+  },
+  'rewards.redeem': {
+    name: 'rewards.redeem',
+    description:
+      'Redeem a reward on behalf of a customer and return the resulting activity. Example: {"email":"jasmine.ortiz@example.com","rewardId":"reward-espresso"}.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['email'],
+      properties: {
+        email: {
+          type: 'string',
+          description: 'Customer email.',
+          format: 'email'
+        },
+        rewardId: {
+          type: 'string',
+          description: 'Specific reward to redeem (defaults to first matching reward).',
+        },
+        maxCost: {
+          type: 'number',
+          description: 'Filter rewards to those at or below this cost when rewardId is omitted.',
+        },
+        channel: {
+          type: 'string',
+          description: 'Channel recorded for the redemption.',
+        },
+        note: {
+          type: 'string',
+          description: 'Optional note stored with the redemption.',
+        },
+      },
+    },
+    runner: async (args) =>
+      supportTools.redeemRewardFlow({
+        email: requireString(args.email, 'email'),
+        rewardId: optionalString(args.rewardId),
+        maxCost: optionalNumber(args.maxCost),
+        channel: optionalString(args.channel),
+        note: optionalString(args.note),
+      }),
+  },
+  'rewards.restock': {
+    name: 'rewards.restock',
+    description:
+      'Restock a catalog reward and return the updated record. Example: {"rewardId":"reward-flight-upgrade","quantity":5}.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        rewardId: {
+          type: 'string',
+          description: 'Specific reward to restock (defaults to lowest inventory reward).',
+        },
+        quantity: {
+          type: 'number',
+          description: 'Units to add to the current inventory.',
+        },
+        targetInventory: {
+          type: 'number',
+          description: 'Set inventory to this exact value (overrides quantity).',
+        },
+        active: {
+          type: 'boolean',
+          description: 'Optional override to toggle the reward active state.',
+        },
+      },
+    },
+    runner: async (args) =>
+      supportTools.restockRewardFlow({
+        rewardId: optionalString(args.rewardId),
+        quantity: optionalNumber(args.quantity),
+        targetInventory: optionalNumber(args.targetInventory),
+        active: optionalBoolean(args.active),
       }),
   },
 };

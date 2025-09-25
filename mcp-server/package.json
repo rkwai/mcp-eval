@@ -7,9 +7,10 @@
     "dev": "node -e \"console.log('MCP server exposes tools only. Use npm run eval to exercise scenarios.')\"",
     "serve": "ts-node src/runtime/stdio-entry.ts",
     "build": "tsc -p .",
-    "eval": "ts-node scripts/run-evals.ts",
-    "eval:llm": "ts-node scripts/run-evals.ts --llm",
-    "eval:report": "node scripts/eval-report.js"
+    "eval": "npm run clear && ts-node scripts/run-evals.ts",
+    "eval:llm": "npm run clear && ts-node scripts/run-evals.ts --llm",
+    "eval:report": "node scripts/eval-report.js",
+    "clear": "rm -rf evals/logs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.4.0"

@@ -1,39 +1,23 @@
-# MCP Server Template
+# MCP Flow Template
 
-This repository is a starting point for building, testing, and shipping Model Context Protocol (MCP) servers that sit in front of existing APIs. It focuses on:
+This repository demonstrates how to treat an MCP server as an **application** that solves user tasks end-to-end for an agent. Instead of exposing raw REST endpoints, the server publishes a small set of intent-driven flow tools. An LLM (or human) calls one tool per outcome, and everything else—lookups, intermediate API calls, data shaping—happens inside the server.
 
-- Designing intent-driven tools so downstream LLMs never deal with raw endpoint plumbing.
-- Providing a pluggable adapter layer (REST today, extensible to GraphQL/auth later) with a built-in mock implementation.
-- Authoring scenario-based evals that confirm the MCP server calls the correct tools with the right payloads.
+## Philosophy
+- **Flow-first design** – each tool performs a complete business workflow (e.g., snapshot customer, issue goodwill, redeem reward). The agent never has to orchestrate individual API calls.
+- **Adapter isolation** – HTTP plumbing lives in one place (`mcp-server/src/client/`). Swap the adapter to point at real services without touching the tools or evals.
+- **Outcome-based evals** – scenarios assert the final state only. Extra tool calls are tolerated unless they fail, which mirrors how agents actually work.
 
-## Structure Overview
-- `mcp-server/src/index.ts` – Exposes the MCP entrypoint (`runTool`, `systemPrompt`).
-- `mcp-server/src/tools/` – High-level tool implementations; keep them intent-driven and decoupled from transport details.
-- `mcp-server/src/client/` – HTTP adapter interface plus a mock adapter (contains the sample dataset). Swap in live integrations when needed.
-- `mcp-server/src/runtime/` – Hosts the MCP stdio server (`server.ts`, `stdio-entry.ts`) and the LLM evaluation harness (`llm-session.ts`).
-- `mcp-server/evals/` – Scenario definitions (`scenarios/`) and logs (`logs/`) that validate behaviour.
-- `mcp-server/scripts/` – Utility scripts, including `run-evals.ts` for executing the scenarios.
-- `mcp-server/.env.example` – Environment template for wiring live APIs or LLM credentials.
+## Repository layout
+- `mcp-server/` – the reference MCP server, flow tools, runtime, and client adapter.
+- `mcp-server/evals/` – scenario definitions and optional JSONL logs.
+- `mcp-server/src/config/` – shared helpers (e.g., `.env` loader).
+- `README.md` (this file) – describes the template philosophy.
+- `mcp-server/README.md` – documents the server internals you’ll customise.
+- `mcp-server/evals/README.md` – documents how scenarios and outcome checks are structured.
 
-The `mcp-server/evals` directory also includes a domain example (loyalty support) to demonstrate how to structure realistic workflows—see `mcp-server/evals/README.md` for details.
+## Getting started
+1. Clone the template.
+2. Read `mcp-server/README.md` to wire the adapter, update the system prompt, and implement your flow tools.
+3. Use the eval harness (`npm run eval`, `npm run eval:llm`) to keep behaviour regression-free as you evolve your server.
 
-## Quick start
-```bash
-cd mcp-server
-npm install
-cp .env.example .env             # populate LLM_PROVIDER, LLM_MODEL, LLM_PROVIDER_API_KEY, LLM_PROVIDER_BASE_URL
-npm run build
-npm run serve                     # exposes the MCP server over stdio (mock adapter by default)
-npm run eval                     # deterministic tool-mode evals (no LLM required)
-npm run eval:llm                 # LLM-in-the-loop evals (provider from LLM_PROVIDER or --provider)
-```
-
-`npm run eval:llm` expects `LLM_PROVIDER` (defaults to `openai`), `LLM_MODEL`, `LLM_PROVIDER_API_KEY`, and `LLM_PROVIDER_BASE_URL` in your environment.
-
-## Extending the Template
-1. **Adapters** – Implement a custom `HttpAdapter` (REST or GraphQL) and call `configureHttpAdapter` during startup to hit real services. Add auth, retries, or circuit breakers here without touching tools.
-2. **Tools** – Add new intent-centric modules in `src/tools/` and register them in `src/tools/index.ts`. Validate inputs, enforce guardrails, and shape responses for downstream agents.
-3. **Scenarios** – Describe conversational workflows in `evals/scenarios/` so regressions are caught early. Each scenario now supports both deterministic tool assertions and an optional `conversation` script that the LLM harness replays.
-4. **Automation** – Wire `npm run build`, `npm run eval`, and `npm run eval:llm` into CI to keep tool semantics stable as APIs evolve.
-
-Clone the template, adapt the adapters, author your domain-specific evals, and keep the mocks representative of production data so your MCP server stays reliable.
+Treat this repo as a starting point: replace the mock adapter with production integrations, adapt the flows to your domain, and extend the evals to match your real support or operations scenarios.

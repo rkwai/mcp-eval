@@ -4,62 +4,33 @@
   "conversation": [
     {
       "role": "user",
-      "content": "Support request: Marcus Lee had a shipment delay. Grant him 500 goodwill points via email and confirm his activity shows the adjustment."
+      "content": "Marcus Lee is following up on a delayed shipment. Please credit him 500 goodwill points and confirm it posted to his account."
     }
   ],
   "steps": [
     {
-      "label": "Agent: Fetch Marcus Lee",
-      "tool": "support.lookupCustomer",
+      "label": "Agent: Issue goodwill points",
+      "tool": "loyalty.issueGoodwill",
       "arguments": {
         "email": "marcus.lee@example.com",
-        "includeHistory": false
-      },
-      "capture": {
-        "customerId": "customer.id",
-        "balanceBefore": "customer.pointsBalance"
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          { "path": "customer.name", "contains": "Marcus" }
-        ]
-      }
-    },
-    {
-      "label": "Agent: Grant 500 goodwill points",
-      "tool": "support.issueGoodwill",
-      "arguments": {
-        "customerId": "{{customerId}}",
         "points": 500,
-        "reason": "Delayed shipment credit",
-        "channel": "email"
-      },
-      "capture": {
-        "balanceAfter": "customer.pointsBalance"
+        "reason": "Delayed shipment credit"
       },
       "expect": {
         "status": "success",
         "assert": [
-          { "path": "activity.points", "equals": 500 },
-          { "path": "customer.pointsBalance", "equals": "{{balanceAfter}}" },
-          { "path": "activity.balanceAfter", "equals": "{{balanceAfter}}" }
-        ]
-      }
-    },
-    {
-      "label": "Agent: Summarize activity to confirm credit",
-      "tool": "support.activitySummary",
-      "arguments": {
-        "customerId": "{{customerId}}",
-        "limit": 5
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          { "path": "records[0].source", "contains": "Goodwill" },
-          { "path": "records[0].points", "equals": 500 },
-          { "path": "totals.earned", "exists": true }
+          {
+            "path": "customer.email",
+            "equals": "marcus.lee@example.com"
+          },
+          {
+            "path": "activity.points",
+            "equals": 500
+          },
+          {
+            "path": "summary.totals",
+            "exists": true
+          }
         ]
       }
     }

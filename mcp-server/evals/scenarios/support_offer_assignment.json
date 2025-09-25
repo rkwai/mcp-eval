@@ -1,75 +1,31 @@
 {
   "id": "support_offer_assignment",
-  "description": "Agent reviews active offers and assigns one to Marcus Lee.",
+  "description": "Agent assigns an offer to a customer and confirms it is available for use.",
   "conversation": [
     {
       "role": "user",
-      "content": "Marcus Lee is on the line asking for any available promos. Pull his profile, find an active offer, assign it to him, and confirm it shows in his offers list."
+      "content": "Marcus Lee is asking if we can give him anything to make up for a rough week. Assign him a promo and confirm it's visible on his account."
     }
   ],
   "steps": [
     {
-      "label": "Agent: Locate Marcus Lee",
-      "tool": "support.lookupCustomer",
+      "label": "Agent: Assign promo to Marcus",
+      "tool": "offers.assign",
       "arguments": {
         "email": "marcus.lee@example.com",
-        "includeHistory": false
-      },
-      "capture": {
-        "customerId": "customer.id"
+        "offerId": "offer-espresso-upgrade"
       },
       "expect": {
         "status": "success",
         "assert": [
-          { "path": "customer.name", "contains": "Marcus" }
-        ]
-      }
-    },
-    {
-      "label": "Agent: Review active offers",
-      "tool": "support.offerCatalog",
-      "arguments": {
-        "onlyActive": true
-      },
-      "capture": {
-        "offerId": "offers[0].id"
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          { "path": "offers", "minLength": 1 }
-        ]
-      }
-    },
-    {
-      "label": "Agent: Assign offer to Marcus",
-      "tool": "support.assignOffer",
-      "arguments": {
-        "customerId": "{{customerId}}",
-        "offerId": "{{offerId}}"
-      },
-      "capture": {
-        "customerOfferId": "id"
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          { "path": "customerId", "equals": "{{customerId}}" },
-          { "path": "status", "equals": "available" }
-        ]
-      }
-    },
-    {
-      "label": "Agent: List customer offers",
-      "tool": "support.customerOffers",
-      "arguments": {
-        "customerId": "{{customerId}}",
-        "includeExpired": false
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          { "path": "offers", "minLength": 1 }
+          {
+            "path": "customerOffer.offerId",
+            "equals": "offer-espresso-upgrade"
+          },
+          {
+            "path": "offers[0].status",
+            "equals": "available"
+          }
         ]
       }
     }

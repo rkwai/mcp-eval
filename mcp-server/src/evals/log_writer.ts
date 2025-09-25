@@ -3,10 +3,19 @@ import { join } from 'path';
 
 export type EvalLogEntry = {
   timestamp: string;
-  run_id: string;
+  runId: string;
   scenario: string;
-  tool_calls: Array<{ name: string; arguments: Record<string, unknown>; status: 'success' | 'error' }>;
+  mode: 'tools' | 'llm';
   status: 'passed' | 'failed';
+  failures: string[];
+  toolCalls: Array<{
+    label: string;
+    name: string;
+    arguments: Record<string, unknown>;
+    status: 'success' | 'error';
+    error?: string;
+  }>;
+  transcript?: Array<{ role: string; content: string }>;
 };
 
 const LOG_DIR = join(process.cwd(), 'evals', 'logs');
@@ -19,7 +28,7 @@ function ensureLogDir() {
 
 export function writeEvalLog(entry: EvalLogEntry) {
   ensureLogDir();
-  const file = join(LOG_DIR, `eval-${entry.scenario}-${entry.run_id}.jsonl`);
+  const file = join(LOG_DIR, `eval-${entry.scenario}-${entry.runId}.jsonl`);
   const stream = createWriteStream(file, { flags: 'a' });
   stream.write(`${JSON.stringify(entry)}\n`);
   stream.end();
