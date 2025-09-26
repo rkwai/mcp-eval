@@ -5,6 +5,14 @@
     {
       "role": "user",
       "content": "Marcus Lee is asking if we can give him anything to make up for a rough week. Assign him a promo and confirm it's visible on his account."
+    },
+    {
+      "role": "user",
+      "content": "Marcus Lee needs a goodwill perk. Pick an available offer for him and make sure it shows up under his account."
+    },
+    {
+      "role": "user",
+      "content": "Hook Marcus Lee up with whatever loyalty promo we can offer today and verify it attaches to his profile."
     }
   ],
   "steps": [

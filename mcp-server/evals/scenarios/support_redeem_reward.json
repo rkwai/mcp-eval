@@ -5,6 +5,14 @@
     {
       "role": "user",
       "content": "Jasmine Ortiz wants us to redeem an espresso upgrade for her while she waits. Take care of it and let me know the result."
+    },
+    {
+      "role": "user",
+      "content": "Jasmine Ortiz is at the counter—redeem her espresso upgrade and confirm it processed."
+    },
+    {
+      "role": "user",
+      "content": "Help Jasmine Ortiz redeem her espresso upgrade."
     }
   ],
   "steps": [

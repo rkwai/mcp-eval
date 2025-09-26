@@ -1,6 +1,6 @@
 import { resolveTool, ToolArguments, ToolName } from './tools';
 import { configureHttpAdapter } from './client/api';
-import { mockHttpAdapter } from './client/mock-adapter';
+import { mockHttpAdapter, resetMockState } from './client/mock-adapter';
 
 // Default to mock adapter so evals can run without external APIs.
 configureHttpAdapter(mockHttpAdapter);
@@ -13,6 +13,10 @@ export type ToolCall = {
 export async function runTool(call: ToolCall) {
   const runner = resolveTool(call.name);
   return runner(call.arguments);
+}
+
+export function resetEnvironment(): void {
+  resetMockState();
 }
 
 export function systemPrompt(): string {

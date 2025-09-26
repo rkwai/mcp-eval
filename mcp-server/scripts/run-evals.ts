@@ -6,7 +6,7 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { runTool, ToolCall } from '../src';
+import { runTool, ToolCall, resetEnvironment } from '../src';
 import { ToolName, ToolArguments } from '../src/tools';
 import { runLlmSession, TranscriptMessage } from '../src/runtime/llm-session';
 import { loadEnv } from '../src/config/load-env';
@@ -65,6 +65,7 @@ type ScenarioExecution = {
 type ConversationMessage = {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  variant?: string;
 };
 
 const scenarioDir = path.join(__dirname, '..', 'evals', 'scenarios');
@@ -107,23 +108,40 @@ async function main() {
 
   const executions: ScenarioExecution[] = [];
   for (const scenario of scenarios) {
-    const execution =
-      useLlm
-        ? await runScenarioLlm(scenario, argv.verbose ?? false)
-        : await runScenarioTools(scenario, argv.verbose ?? false);
-    executions.push(execution);
+    if (useLlm) {
+      const variantExecutions = await runScenarioLlm(scenario, argv.verbose ?? false);
+      executions.push(...variantExecutions);
 
-    if (loggingEnabled) {
-      writeEvalLog({
-        timestamp: new Date().toISOString(),
-        runId: createRunId(),
-        scenario: scenario.id,
-        mode: useLlm ? 'llm' : 'tools',
-        status: execution.result.passed ? 'passed' : 'failed',
-        failures: execution.result.failures,
-        toolCalls: execution.toolCalls,
-        transcript: execution.transcript?.map((entry) => ({ role: entry.role, content: entry.content })),
-      });
+      if (loggingEnabled) {
+        for (const execution of variantExecutions) {
+          writeEvalLog({
+            timestamp: new Date().toISOString(),
+            runId: createRunId(),
+            scenario: execution.result.scenario,
+            mode: 'llm',
+            status: execution.result.passed ? 'passed' : 'failed',
+            failures: execution.result.failures,
+            toolCalls: execution.toolCalls,
+            transcript: execution.transcript?.map((entry) => ({ role: entry.role, content: entry.content })),
+          });
+        }
+      }
+    } else {
+      const execution = await runScenarioTools(scenario, argv.verbose ?? false);
+      executions.push(execution);
+
+      if (loggingEnabled) {
+        writeEvalLog({
+          timestamp: new Date().toISOString(),
+          runId: createRunId(),
+          scenario: execution.result.scenario,
+          mode: 'tools',
+          status: execution.result.passed ? 'passed' : 'failed',
+          failures: execution.result.failures,
+          toolCalls: execution.toolCalls,
+          transcript: execution.transcript?.map((entry) => ({ role: entry.role, content: entry.content })),
+        });
+      }
     }
   }
 
@@ -171,6 +189,39 @@ function cloneArgs(input: Record<string, unknown> | undefined): Record<string, u
   }
 }
 
+function cloneMessage(message: ConversationMessage): ConversationMessage {
+  return {
+    role: message.role,
+    content: message.content,
+  };
+}
+
+function expandConversationVariants(messages: ConversationMessage[]): ConversationMessage[][] {
+  if (!messages || messages.length === 0) {
+    return [];
+  }
+
+  const hasVariantField = messages.some((msg) => msg.variant !== undefined && msg.variant !== null);
+  if (hasVariantField) {
+    const variants = new Map<string, ConversationMessage[]>();
+    for (const message of messages) {
+      const key = message.variant ?? 'default';
+      if (!variants.has(key)) {
+        variants.set(key, []);
+      }
+      variants.get(key)!.push(cloneMessage(message));
+    }
+    return Array.from(variants.values());
+  }
+
+  const containsNonUserRole = messages.some((msg) => msg.role !== 'user');
+  if (containsNonUserRole) {
+    return [messages.map((msg) => cloneMessage(msg))];
+  }
+
+  return messages.map((msg) => [cloneMessage(msg)]);
+}
+
 function formatError(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
@@ -199,6 +250,7 @@ function appendError(existing: string | undefined, addition: string | undefined)
 }
 
 async function runScenarioTools(scenario: Scenario, verbose: boolean): Promise<ScenarioExecution> {
+  resetEnvironment();
   console.log(`\n=== ${scenario.id} ===`);
   const captures: Record<string, unknown> = {};
   const failures: string[] = [];
@@ -287,31 +339,85 @@ async function runScenarioTools(scenario: Scenario, verbose: boolean): Promise<S
 async function runScenarioLlm(
   scenario: Scenario,
   verbose: boolean,
-): Promise<ScenarioExecution> {
+): Promise<ScenarioExecution[]> {
   console.log(`\n=== ${scenario.id} ===`);
+
+  if (!scenario.conversation || scenario.conversation.length === 0) {
+    const failures = [
+      'Scenario does not define a conversation script for LLM mode. Add a "conversation" array.',
+    ];
+    console.log('❌ Failed');
+    return [
+      {
+        result: { scenario: scenario.id, passed: false, failures },
+        toolCalls: [],
+        transcript: [],
+      },
+    ];
+  }
+
+  const conversationVariants = expandConversationVariants(scenario.conversation);
+  const executions: ScenarioExecution[] = [];
+  const variantCount = conversationVariants.length;
+
+  for (let idx = 0; idx < variantCount; idx += 1) {
+    const script = conversationVariants[idx];
+    const variantScenarioId = variantCount > 1 ? `${scenario.id}::variant-${idx + 1}` : scenario.id;
+    if (variantCount > 1) {
+      console.log(`--- Variant ${idx + 1}/${variantCount}`);
+    }
+
+    const execution = await runScenarioLlmVariant({
+      scenario,
+      script,
+      variantScenarioId,
+      verbose,
+    });
+
+    executions.push(execution);
+
+    const passed = execution.result.passed;
+    if (variantCount > 1) {
+      console.log(passed ? '  ✅ Variant passed' : '  ❌ Variant failed');
+    } else {
+      console.log(passed ? '✅ Passed' : '❌ Failed');
+    }
+  }
+
+  if (variantCount > 1) {
+    const allPassed = executions.every((execution) => execution.result.passed);
+    console.log(allPassed ? '✅ All variants passed' : '❌ One or more variants failed');
+  }
+
+  return executions;
+}
+
+type RunScenarioVariantArgs = {
+  scenario: Scenario;
+  script: ConversationMessage[];
+  variantScenarioId: string;
+  verbose: boolean;
+};
+
+async function runScenarioLlmVariant({
+  scenario,
+  script,
+  variantScenarioId,
+  verbose,
+}: RunScenarioVariantArgs): Promise<ScenarioExecution> {
+  resetEnvironment();
   const failures: string[] = [];
   const captures: Record<string, unknown> = {};
   const toolCalls: ToolCallLog[] = [];
 
-  if (!scenario.conversation || scenario.conversation.length === 0) {
-    failures.push('Scenario does not define a conversation script for LLM mode. Add a "conversation" array.');
-    console.log('❌ Failed');
-    return {
-      result: { scenario: scenario.id, passed: false, failures },
-      toolCalls,
-      transcript: [],
-    };
-  }
-
   let sessionResult;
   try {
-    sessionResult = await runLlmSession(scenario.conversation, { verbose });
+    sessionResult = await runLlmSession(script, { verbose });
   } catch (error) {
     const message = (error as Error).message ?? 'Unknown LLM session error';
     failures.push(`LLM session failed: ${message}`);
-    console.log('❌ Failed');
     return {
-      result: { scenario: scenario.id, passed: false, failures },
+      result: { scenario: variantScenarioId, passed: false, failures },
       toolCalls,
       transcript: [],
     };
@@ -346,7 +452,6 @@ async function runScenarioLlm(
       status: match.error ? 'error' : 'success',
       error: match.error,
     };
-
 
     const expectedStatus = step.expect?.status ?? 'success';
     if (expectedStatus === 'success' && match.error) {
@@ -396,15 +501,16 @@ async function runScenarioLlm(
         name: call.name,
         arguments: cloneArgs(call.arguments as Record<string, unknown>),
         status: call.error ? 'error' : 'success',
-        error: call.error ? appendError(undefined, `additional tool ${call.name} returned error: ${call.error}`) : undefined,
+        error: call.error
+          ? appendError(undefined, `additional tool ${call.name} returned error: ${call.error}`)
+          : undefined,
       });
     });
 
   const passed = failures.length === 0;
-  console.log(passed ? '✅ Passed' : '❌ Failed');
 
   return {
-    result: { scenario: scenario.id, passed, failures },
+    result: { scenario: variantScenarioId, passed, failures },
     toolCalls,
     transcript,
   };

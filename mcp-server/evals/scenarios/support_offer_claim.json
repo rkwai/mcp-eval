@@ -5,6 +5,14 @@
     {
       "role": "user",
       "content": "Alicia Patel wants to use her espresso upgrade now. Claim it on her behalf and confirm the reward details for me."
+    },
+    {
+      "role": "user",
+      "content": "Alicia Patel's was issued an espresso upgrade but cannot claim it herself. Help her claim it."
+    },
+    {
+      "role": "user",
+      "content": "Alicia Patel needs help claiming her espresso upgrade."
     }
   ],
   "steps": [

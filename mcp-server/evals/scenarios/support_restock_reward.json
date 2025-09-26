@@ -5,6 +5,14 @@
     {
       "role": "user",
       "content": "We just received five more priority boarding vouchers from the partner team. Update the catalog inventory and confirm the new count."
+    },
+    {
+      "role": "user",
+      "content": "Add five priority boarding vouchers back into stock and let me know what the catalog shows now."
+    },
+    {
+      "role": "user",
+      "content": "Please top up priority boarding with five more units and confirm the catalog reflects the new inventory."
     }
   ],
   "steps": [

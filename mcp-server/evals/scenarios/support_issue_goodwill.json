@@ -5,6 +5,14 @@
     {
       "role": "user",
       "content": "Marcus Lee is following up on a delayed shipment. Please credit him 500 goodwill points and confirm it posted to his account."
+    },
+    {
+      "role": "user",
+      "content": "Marcus Lee just called about his late delivery. Drop 500 goodwill points into his balance and confirm they landed."
+    },
+    {
+      "role": "user",
+      "content": "Customer Marcus Lee had a shipment delay—post 500 goodwill points to his account and confirm the balance reflects it."
     }
   ],
   "steps": [

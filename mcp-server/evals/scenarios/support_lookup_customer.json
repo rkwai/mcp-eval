@@ -5,6 +5,14 @@
     {
       "role": "user",
       "content": "Alicia Patel wants a balance check. Pull her profile and give me the recent ledger entries so I can walk her through them."
+    },
+    {
+      "role": "user",
+      "content": "Can you grab Alicia Patel's account details? She needs her balance and latest transactions while she's on the line."
+    },
+    {
+      "role": "user",
+      "content": "Alicia Patel is asking for a quick balance readout—pull her profile with the most recent ledger items, please."
     }
   ],
   "steps": [
