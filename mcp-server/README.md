@@ -38,7 +38,7 @@ Logs are written to `evals/logs/` only when `EVAL_LOGS_ENABLED=true`.
 
 ## Connect from MCP clients
 
-### Cursor
+### Cursor (example)
 1. Install dependencies and build once:
    ```bash
    npm install
@@ -53,7 +53,7 @@ Logs are written to `evals/logs/` only when `EVAL_LOGS_ENABLED=true`.
        "skyward-rewards": {
          "command": "npm",
          "args": ["run", "serve"],
-         "cwd": "/Users/{{you}}/Documents/GitHub/mcp-eval/mcp-server",
+         "cwd": "{{pwd}}/mcp-eval/mcp-server",
          "env": {
            "NODE_ENV": "production"
          }
@@ -62,6 +62,16 @@ Logs are written to `evals/logs/` only when `EVAL_LOGS_ENABLED=true`.
    }
    ```
    Cursor will execute `npm run serve` and connect over stdio, so ensure any required environment variables are present in `.env` (or inline via `env`).
+   Sometimes Cursor will have trouble finding the correct path, so a startup script will be needed
+   ```json
+   {
+     "mcpServers": {
+       "skyward-rewards": {
+        "command": "{{pwd}}/mcp-eval/mcp-server/scripts/start-mcp.sh"
+       }
+     }
+   }
+   ```   
 4. Restart Cursor. The MCP server should now be available in the MCP pane; start it from there before issuing support requests.
 
 ## Adding a new flow tool
