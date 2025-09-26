@@ -366,8 +366,28 @@ function sanitizeRawArguments(raw: string): string {
   cleaned = cleaned.replace(/,\s*([}\]])/g, '$1');
   cleaned = cleaned.replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":');
   cleaned = cleaned.replace(/([{,]\s*)"([A-Za-z0-9_]+)"\s*=\s*/g, '$1"$2": ');
-  cleaned = cleaned.replace(/([A-Za-z0-9_]+)\s*=\s*"([^"}]*)"/g, '"$1": "$2"');
-  cleaned = cleaned.replace(/([A-Za-z0-9_]+)\s*=\s*([^,}\s]+)/g, '"$1": "$2"');
+
+  if (cleaned.includes('=')) {
+    cleaned = cleaned
+      .replace(
+        /([{,]\s*)([A-Za-z0-9_]+)\s*=\s*"([^"\\]*(?:\\.[^"\\]*)*)"/g,
+        (_match, prefix, key, value) => `${prefix}"${key}": "${escapeForJson(value)}"`,
+      )
+      .replace(
+        /([{,]\s*)([A-Za-z0-9_]+)\s*=\s*'([^'\\]*(?:\\.[^'\\]*)*)'/g,
+        (_match, prefix, key, value) => `${prefix}"${key}": "${escapeForJson(value)}"`,
+      )
+      .replace(
+        /([{,]\s*)([A-Za-z0-9_]+)\s*=\s*([^,}\s]+)/g,
+        (_match, prefix, key, value) => {
+          const trimmedValue = value.trim();
+          if (/^-?\d+(?:\.\d+)?$/.test(trimmedValue) || /^(true|false|null)$/i.test(trimmedValue)) {
+            return `${prefix}"${key}": ${trimmedValue}`;
+          }
+          return `${prefix}"${key}": "${escapeForJson(trimmedValue)}"`;
+        },
+      );
+  }
 
   const openBraces = (cleaned.match(/{/g) ?? []).length;
   const closeBraces = (cleaned.match(/}/g) ?? []).length;
@@ -493,4 +513,8 @@ function truncateForError(raw: string, limit = 200): string {
     return trimmed;
   }
   return `${trimmed.slice(0, limit)}…`;
+}
+
+function escapeForJson(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
