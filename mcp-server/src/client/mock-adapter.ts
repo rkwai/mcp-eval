@@ -159,7 +159,7 @@ function createInitialState(): MockState {
       'cust-alicia',
       [
         {
-          id: 'coffer-alicia-upgrade',
+          id: 'offer-alicia-upgrade',
           offerId: 'offer-espresso-upgrade',
           customerId: 'cust-alicia',
           status: 'available',

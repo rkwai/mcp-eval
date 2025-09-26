@@ -21,7 +21,7 @@
       "tool": "offers.claim",
       "arguments": {
         "email": "alicia.patel@example.com",
-        "customerOfferId": "coffer-alicia-upgrade"
+        "customerOfferId": "offer-alicia-upgrade"
       },
       "expect": {
         "status": "success",

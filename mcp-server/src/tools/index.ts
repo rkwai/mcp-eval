@@ -123,7 +123,7 @@ export const TOOL_CONFIG: Record<ToolName, AnyToolConfig> = {
   'offers.claim': {
     name: 'offers.claim',
     description:
-      'Claim an assigned offer for a customer and confirm the outcome. Example: {"email":"alicia.patel@example.com","customerOfferId":"coffer-alicia-upgrade"}.',
+      'Claim an assigned offer for a customer and confirm the outcome. Example: {"email":"alicia.patel@example.com","customerOfferId":"offer-alicia-upgrade"}.',
     schema: claimSchema,
     runner: async (args) =>
       supportTools.claimOfferFlow({
