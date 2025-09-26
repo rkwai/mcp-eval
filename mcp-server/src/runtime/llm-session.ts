@@ -410,11 +410,14 @@ function normalizeForExtraction(raw: string): string {
 }
 
 function postProcessArguments(args: ToolArguments, definition?: ToolDefinition): ToolArguments {
-  if (!definition?.inputSchema || !('properties' in definition.inputSchema)) {
+  if (!definition?.inputSchema || !('properties' in (definition.inputSchema as Record<string, unknown>))) {
     return normaliseLoose(args) as ToolArguments;
   }
 
-  const properties = definition.inputSchema.properties ?? {};
+  const schemaObject = definition.inputSchema as {
+    properties?: Record<string, { type?: string }>;
+  };
+  const properties = schemaObject.properties ?? {};
   const output: Record<string, unknown> = {};
   const source = normaliseLoose(args) as Record<string, unknown>;
 

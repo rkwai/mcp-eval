@@ -1,56 +1,113 @@
-import { systemPrompt, runTool } from '../index';
-import { TOOL_DEFINITIONS, ToolName, ToolArguments } from '../tools';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import {
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+  Tool,
+  McpError,
+  ErrorCode,
+} from '@modelcontextprotocol/sdk/types.js';
+import { zodToJsonSchema } from 'zod-to-json-schema';
+import { systemPrompt } from '../index';
+import { TOOL_CONFIG } from '../tools';
 
 export interface StartServerOptions {
   name?: string;
   version?: string;
   description?: string;
   instructions?: string;
-  transport?: unknown;
+  transport?: StdioServerTransport;
+}
+
+function serializeResult(result: unknown): string {
+  if (result === undefined || result === null) {
+    return 'null';
+  }
+  if (typeof result === 'string') {
+    return result;
+  }
+  try {
+    return JSON.stringify(result, null, 2);
+  } catch (error) {
+    return String(result);
+  }
+}
+
+function serializeError(error: unknown): string {
+  if (error instanceof Error) {
+    return `[error] ${error.message}`;
+  }
+  return `[error] ${String(error)}`;
 }
 
 /**
  * Bootstraps an MCP server over stdio so MCP-compatible clients can connect.
- * Uses dynamic imports to avoid hard dependency on SDK types until runtime.
  */
 export async function startMcpServer(options: StartServerOptions = {}) {
-  const [{ McpServer }, { StdioServerTransport }] = await Promise.all([
-    import('@modelcontextprotocol/sdk/server/mcp.js'),
-    import('@modelcontextprotocol/sdk/server/stdio.js'),
-  ]);
-
-  const server = new McpServer({
+  const server = new Server({
     name: options.name ?? 'loyalty-support-mcp',
     version: options.version ?? '0.1.0',
-    description:
-      options.description ??
-      'Intent-driven MCP server that fronts loyalty/reward APIs for internal support teams.',
+  }, {
+    capabilities: {
+      tools: {
+        listChanged: true,
+      },
+    },
     instructions: options.instructions ?? systemPrompt(),
   });
 
-  for (const definition of Object.values(TOOL_DEFINITIONS)) {
-    server.tool({
-      name: definition.name,
-      description: definition.description,
-      inputSchema: definition.inputSchema,
-      execute: async ({ arguments: rawArgs }: { arguments: ToolArguments }) => {
-        const args = (rawArgs ?? {}) as ToolArguments;
-        const result = await runTool({ name: definition.name as ToolName, arguments: args });
-        return {
-          type: 'json',
-          data: result,
-        };
-      },
+  // Set up request handlers
+  server.setRequestHandler(ListToolsRequestSchema, async (request) => {
+    const tools: Tool[] = Object.values(TOOL_CONFIG).map(config => {
+      const jsonSchema = zodToJsonSchema(config.schema, { $refStrategy: 'none' });
+      const { $schema: _omit, ...schemaWithoutMeta } = jsonSchema as Record<string, unknown>;
+      return {
+        name: config.name,
+        description: config.description,
+        inputSchema: {
+          type: 'object',
+          ...schemaWithoutMeta,
+        },
+      };
     });
-  }
+
+    return {
+      tools,
+    };
+  });
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    const config = (TOOL_CONFIG as any)[name];
+
+    if (!config) {
+      throw new McpError(ErrorCode.MethodNotFound, `Tool not found: ${name}`);
+    }
+
+    try {
+      const parsed = config.schema.parse(args);
+      const data = await config.runner(parsed);
+      return {
+        content: [{ type: 'text', text: serializeResult(data) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: 'text', text: serializeError(error) }],
+        isError: true,
+      };
+    }
+  });
+
+  // Set up notification handlers
+  server.oninitialized = () => {
+    console.log('[mcp-server] Server initialized successfully');
+    server.sendToolListChanged().catch((error) => {
+      console.error('[mcp-server] failed to notify tool list change', error);
+    });
+  };
 
   const transport = options.transport ?? new StdioServerTransport();
   await server.connect(transport);
-  if (typeof (transport as { start?: () => Promise<void> }).start === 'function') {
-    await (transport as { start: () => Promise<void> }).start();
-  }
-  if (typeof (server as { start?: () => Promise<void> }).start === 'function') {
-    await (server as { start: () => Promise<void> }).start();
-  }
+  console.log('[mcp-server] Waiting for MCP client connection...');
   return server;
 }

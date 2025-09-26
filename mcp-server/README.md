@@ -36,6 +36,34 @@ npm run eval:llm   # OpenRouter-driven evals (requires LLM_* env vars)
 ```
 Logs are written to `evals/logs/` only when `EVAL_LOGS_ENABLED=true`.
 
+## Connect from MCP clients
+
+### Cursor
+1. Install dependencies and build once:
+   ```bash
+   npm install
+   npm run build
+   ```
+   (Optional) create a `.env` file if you plan to run LLM-backed evals—set `LLM_MODEL`, `LLM_PROVIDER_API_KEY`, and any adapter config you introduce.
+2. In Cursor, open the command palette (`Cmd/Ctrl` + `Shift` + `P`) and run **“Cursor: Open Settings (JSON)”**.
+3. Add (or extend) the `"mcpServers"` section with an entry pointing at this directory. Use absolute paths so Cursor can launch the server:
+   ```json
+   {
+     "mcpServers": {
+       "skyward-rewards": {
+         "command": "npm",
+         "args": ["run", "serve"],
+         "cwd": "/Users/{{you}}/Documents/GitHub/mcp-eval/mcp-server",
+         "env": {
+           "NODE_ENV": "production"
+         }
+       }
+     }
+   }
+   ```
+   Cursor will execute `npm run serve` and connect over stdio, so ensure any required environment variables are present in `.env` (or inline via `env`).
+4. Restart Cursor. The MCP server should now be available in the MCP pane; start it from there before issuing support requests.
+
 ## Adding a new flow tool
 1. Implement the workflow in `src/tools/support.ts` (or a new module) with the minimal inputs required.
 2. Export it through `src/tools/index.ts` with a descriptive name and JSON schema.
