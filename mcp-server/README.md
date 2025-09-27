@@ -3,7 +3,10 @@
 This directory contains the runnable MCP server that ships with the template. Every tool here is a **flow**: it performs the full support workflow so the caller only needs to supply the minimal intent (usually an email address and a couple of options).
 
 ## What lives here
-- `src/client/` – the HTTP adapter. The template ships with a mock adapter for convenience—replace it with a real integration before you go live (REST, GraphQL, gRPC, etc.).
+- `src/client/` – adapter plumbing shared across transports.
+  - `transport.ts` exposes the `Transport` interface plus the fetch transport for live APIs.
+  - `mock-transport.ts` provides the in-memory dataset used by default.
+  - `support-adapter.ts` turns a transport into domain-specific helper methods consumed by the tools.
 - `src/tools/` – flow implementations and registry.
   - `src/tools/support.ts` contains the flow logic (e.g., look up a customer, issue goodwill, redeem a reward).
   - `src/tools/index.ts` maps the exported flows to MCP tool definitions (`customer.snapshot`, `loyalty.issueGoodwill`, `offers.assign`, etc.). Extend this file when you add new flows.
@@ -16,11 +19,18 @@ This directory contains the runnable MCP server that ships with the template. Ev
 - `evals/` – scenarios that call the flow tools; see `evals/README.md` for details.
 
 ## Customisation checklist
-1. **Adapter** – delete the mock implementation in `src/client/mock-adapter.ts` and build an adapter that targets your real services. Call `configureHttpAdapter(...)` in `src/index.ts` with your implementation.
+1. **Transport + adapter** – replace the mock transport (`createMockTransport`) with your own implementation of `Transport` (REST, GraphQL, gRPC, etc.) and wire it in via `useTransport(...)` (see `src/index.ts`). If you need additional helper methods, extend `buildSupportAdapter`.
 2. **Flow tools** – edit `src/tools/support.ts` to match your workflows (e.g., loyalty, billing, fulfilment). Keep each exported function a full “flow” so the agent can call it once per task.
 3. **Tool registry** – register new flows in `src/tools/index.ts` with clear names, descriptions, and JSON schemas. These definitions are what the MCP clients discover.
 4. **System prompt** – update `systemPrompt()` in `src/index.ts` to describe your domain, jargon, and tool usage rules. The prompt is the primary guidance the LLM sees.
 5. **Environment** – copy `.env.example` to `.env` and provide your OpenRouter/adapter settings. `LLM_MODEL`, `LLM_PROVIDER_API_KEY`, `LLM_PROVIDER_BASE_URL`, and `EVAL_LOGS_ENABLED` are used by the scripts.
+
+## Live adapter quickstart
+1. Uncomment and fill `API_BASE_URL` in `.env`. Optional helpers:
+   - `API_DEFAULT_HEADERS` (JSON) or `API_BEARER_TOKEN` for auth.
+   - `API_TIMEOUT_MS` to override the default 15s request timeout.
+2. Run `npm run eval:e2e` to exercise the flows end-to-end with the live adapter (LLM-driven tool calls).
+3. Keep deterministic (`npm run eval`) and LLM (`npm run eval:llm`) runs in CI for rapid regression checks.
 
 ## Commands
 ```bash
@@ -35,8 +45,11 @@ Evaluation (optional):
 ```bash
 npm run eval       # deterministic flow tests
 npm run eval:llm   # OpenRouter-driven evals (requires LLM_* env vars)
+npm run eval:e2e   # LLM + live HTTP adapter (requires API_* + LLM_* env vars)
 ```
 Logs are written to `evals/logs/` only when `EVAL_LOGS_ENABLED=true`.
+
+All scenarios assert **tool names and arguments** rather than downstream payloads. That keeps the suite stable while you iterate on adapters or datasets—the pass criterion is whether the agent invoked the correct flow with the right inputs.
 
 ## Connect from MCP clients
 

@@ -1,4 +1,3 @@
-import { HttpAdapter, HttpRequest, HttpResponse } from './api';
 import {
   CustomerDetailResponse,
   CustomerHistoryResponse,
@@ -16,6 +15,7 @@ import {
   Offer,
   CustomerOffer,
 } from '../types';
+import { HttpRequest, HttpResponse, Transport } from './transport';
 
 type MockState = {
   customers: Map<string, CustomerDetailResponse>;
@@ -25,7 +25,171 @@ type MockState = {
   customerOfferStore: Map<string, CustomerOffer[]>;
 };
 
-let state: MockState = createInitialState();
+export function createMockTransport(): Transport {
+  const state = createInitialState();
+
+  const transport: Transport = async <T>(request: HttpRequest): Promise<HttpResponse<T>> => {
+    const { method, url, body } = request;
+
+    if (method === 'GET' && url === '/customers') {
+      const response: CustomerListResponse = {
+        customers: Array.from(state.customers.values()).map(({ recentActivity, ...rest }) => rest),
+      };
+      return { status: 200, data: response as unknown as T };
+    }
+
+    if (method === 'POST' && url === '/customers') {
+      const payload = body as Partial<CustomerDetailResponse> & { startingPoints?: number };
+      if (!payload?.name || !payload.email) {
+        return errorResponse('name and email are required.', 400);
+      }
+      const id = generateId('cust');
+      const now = new Date().toISOString();
+      const profile: CustomerDetailResponse = {
+        id,
+        name: payload.name,
+        email: payload.email,
+        phone: payload.phone,
+        tier: payload.tier ?? 'bronze',
+        pointsBalance: payload.startingPoints ?? 0,
+        lifetimePoints: payload.startingPoints ?? 0,
+        preferences: payload.preferences ?? { marketingOptIn: true, preferredChannel: 'email' },
+        joinedAt: now,
+        updatedAt: now,
+        recentActivity: [],
+      };
+      state.customers.set(id, profile);
+      return { status: 201, data: profile as unknown as T };
+    }
+
+    const customerIdMatch = url.match(/^\/customers\/([^/]+)/);
+    if (customerIdMatch) {
+      const customerId = customerIdMatch[1];
+      const customer = lookupCustomerById(state, customerId);
+      if (!customer) {
+        return errorResponse('Customer not found.', 404);
+      }
+
+      if (method === 'GET' && url === `/customers/${customerId}`) {
+        return { status: 200, data: customer as unknown as T };
+      }
+
+      if (method === 'PATCH' && url === `/customers/${customerId}`) {
+        Object.assign(customer, body ?? {});
+        customer.updatedAt = new Date().toISOString();
+        state.customers.set(customer.id, { ...customer });
+        return { status: 200, data: customer as unknown as T };
+      }
+
+      if (method === 'POST' && url === `/customers/${customerId}/earn`) {
+        const payload = body as { points: number; source: string };
+        const points = Math.round(payload.points ?? 0);
+        customer.pointsBalance += points;
+        customer.lifetimePoints += points;
+        state.customers.set(customer.id, { ...customer });
+        const activity = pushActivity(state, {
+          customerId,
+          type: 'earn',
+          points,
+          balanceAfter: customer.pointsBalance,
+          source: payload.source,
+        });
+        const response: EarnPointsResponse = {
+          customer,
+          activity,
+        };
+        return { status: 201, data: response as unknown as T };
+      }
+
+      if (method === 'POST' && url === `/customers/${customerId}/redeem`) {
+        const payload = body as { rewardId: string };
+        const reward = state.rewards.find((entry) => entry.id === payload.rewardId);
+        if (!reward) {
+          return errorResponse('Reward not found.', 404);
+        }
+        customer.pointsBalance = Math.max(0, customer.pointsBalance - reward.cost);
+        state.customers.set(customer.id, { ...customer });
+        if (reward.inventory !== null) {
+          reward.inventory = Math.max(0, reward.inventory - 1);
+        }
+        const activity = pushActivity(state, {
+          customerId,
+          type: 'redeem',
+          points: -reward.cost,
+          balanceAfter: customer.pointsBalance,
+          source: reward.name,
+        });
+        const response: RedeemRewardResponse = {
+          customer,
+          reward,
+          activity,
+        };
+        return { status: 201, data: response as unknown as T };
+      }
+
+      if (method === 'GET' && url === `/customers/${customerId}/history`) {
+        const history: CustomerHistoryResponse = {
+          history: state.activityStore.get(customerId) ?? [],
+        };
+        return { status: 200, data: history as unknown as T };
+      }
+
+      if (method === 'GET' && url === `/customers/${customerId}/offers`) {
+        const offersResponse: CustomerOffersResponse = {
+          offers: (state.customerOfferStore.get(customerId) ?? []).map((entry) => updateOfferStatus(entry)),
+        };
+        return { status: 200, data: offersResponse as unknown as T };
+      }
+
+      if (method === 'POST' && url === `/customers/${customerId}/offers`) {
+        const payload = body as { offerId: string; expiresAt?: string };
+        const entry = assignOfferToCustomer(state, customerId, payload.offerId, payload.expiresAt);
+        const response: AssignOfferResponse = {
+          customerOffer: entry,
+        };
+        return { status: 201, data: response as unknown as T };
+      }
+
+      const claimMatch = url.match(/^\/customers\/[^/]+\/offers\/([^/]+)\/claim$/);
+      if (claimMatch && method === 'POST') {
+        const customerOfferId = claimMatch[1];
+        const response = claimOfferForCustomer(state, customerId, customerOfferId);
+        return { status: 201, data: response as unknown as T };
+      }
+    }
+
+    if (method === 'GET' && url === '/rewards') {
+      const response: RewardCatalogResponse = {
+        rewards: state.rewards,
+      };
+      return { status: 200, data: response as unknown as T };
+    }
+
+    if (method === 'PATCH' && url.startsWith('/rewards/')) {
+      const rewardId = url.split('/')[2];
+      const reward = state.rewards.find((entry) => entry.id === rewardId);
+      if (!reward) {
+        return errorResponse('Reward not found.', 404);
+      }
+      Object.assign(reward, body ?? {});
+      const response: UpdateRewardResponse = {
+        reward,
+      };
+      return { status: 200, data: response as unknown as T };
+    }
+
+    if (method === 'GET' && url === '/offers') {
+      const response: OffersResponse = {
+        offers: state.offers,
+      };
+      return { status: 200, data: response as unknown as T };
+    }
+
+    return errorResponse(`Unhandled request ${method} ${url}`, 404);
+  };
+
+  return transport;
+}
 
 function createInitialState(): MockState {
   const rewards: Reward[] = [
@@ -180,168 +344,7 @@ function createInitialState(): MockState {
   };
 }
 
-export function resetMockState() {
-  state = createInitialState();
-}
-
-export const mockHttpAdapter: HttpAdapter = async <T>(request: HttpRequest): Promise<HttpResponse<T>> => {
-  const { method, url, body } = request;
-
-  if (method === 'GET' && url === '/customers') {
-    const response: CustomerListResponse = {
-      customers: Array.from(state.customers.values()).map(({ recentActivity, ...rest }) => rest),
-    };
-    return { status: 200, data: response as T };
-  }
-
-  if (method === 'POST' && url === '/customers') {
-    const payload = body as Partial<CustomerDetailResponse> & { startingPoints?: number };
-    if (!payload?.name || !payload.email) {
-      return errorResponse('name and email are required.', 400);
-    }
-    const id = generateId('cust');
-    const now = new Date().toISOString();
-    const profile: CustomerDetailResponse = {
-      id,
-      name: payload.name,
-      email: payload.email,
-      phone: payload.phone,
-      tier: payload.tier ?? 'bronze',
-      pointsBalance: payload.startingPoints ?? 0,
-      lifetimePoints: payload.startingPoints ?? 0,
-      preferences: payload.preferences ?? { marketingOptIn: true, preferredChannel: 'email' },
-      joinedAt: now,
-      updatedAt: now,
-      recentActivity: [],
-    };
-    state.customers.set(id, profile);
-    return { status: 201, data: profile as unknown as T };
-  }
-
-  const customerIdMatch = url.match(/^\/customers\/([^/]+)/);
-  if (customerIdMatch) {
-    const customerId = customerIdMatch[1];
-    const customer = lookupCustomerById(customerId);
-    if (!customer) {
-      return errorResponse('Customer not found.', 404);
-    }
-
-    if (method === 'GET' && url === `/customers/${customerId}`) {
-      return { status: 200, data: customer as unknown as T };
-    }
-
-    if (method === 'PATCH' && url === `/customers/${customerId}`) {
-      Object.assign(customer, body ?? {});
-      customer.updatedAt = new Date().toISOString();
-      return { status: 200, data: customer as unknown as T };
-    }
-
-    if (method === 'POST' && url === `/customers/${customerId}/earn`) {
-      const payload = body as { points: number; source: string };
-      const points = Math.round(payload.points ?? 0);
-      customer.pointsBalance += points;
-      customer.lifetimePoints += points;
-      const activity = pushActivity({
-        customerId,
-        type: 'earn',
-        points,
-        balanceAfter: customer.pointsBalance,
-        source: payload.source,
-      });
-      const response: EarnPointsResponse = {
-        customer,
-        activity,
-      };
-      return { status: 201, data: response as unknown as T };
-    }
-
-    if (method === 'POST' && url === `/customers/${customerId}/redeem`) {
-      const payload = body as { rewardId: string };
-      const reward = state.rewards.find((entry) => entry.id === payload.rewardId);
-      if (!reward) {
-        return errorResponse('Reward not found.', 404);
-      }
-      customer.pointsBalance = Math.max(0, customer.pointsBalance - reward.cost);
-      if (reward.inventory !== null) {
-        reward.inventory = Math.max(0, reward.inventory - 1);
-      }
-      const activity = pushActivity({
-        customerId,
-        type: 'redeem',
-        points: -reward.cost,
-        balanceAfter: customer.pointsBalance,
-        source: reward.name,
-      });
-      const response: RedeemRewardResponse = {
-        customer,
-        reward,
-        activity,
-      };
-      return { status: 201, data: response as unknown as T };
-    }
-
-    if (method === 'GET' && url === `/customers/${customerId}/history`) {
-      const history: CustomerHistoryResponse = {
-        history: state.activityStore.get(customerId) ?? [],
-      };
-      return { status: 200, data: history as unknown as T };
-    }
-
-    if (method === 'GET' && url === `/customers/${customerId}/offers`) {
-      const offersResponse: CustomerOffersResponse = {
-        offers: (state.customerOfferStore.get(customerId) ?? []).map((entry) => updateOfferStatus(entry)),
-      };
-      return { status: 200, data: offersResponse as unknown as T };
-    }
-
-    if (method === 'POST' && url === `/customers/${customerId}/offers`) {
-      const payload = body as { offerId: string; expiresAt?: string };
-      const entry = assignOfferToCustomer(customerId, payload.offerId, payload.expiresAt);
-      const response: AssignOfferResponse = {
-        customerOffer: entry,
-      };
-      return { status: 201, data: response as unknown as T };
-    }
-
-    const claimMatch = url.match(/^\/customers\/[^/]+\/offers\/([^/]+)\/claim$/);
-    if (claimMatch && method === 'POST') {
-      const customerOfferId = claimMatch[1];
-      const response = claimOfferForCustomer(customerId, customerOfferId);
-      return { status: 201, data: response as unknown as T };
-    }
-  }
-
-  if (method === 'GET' && url === '/rewards') {
-    const response: RewardCatalogResponse = {
-      rewards: state.rewards,
-    };
-    return { status: 200, data: response as unknown as T };
-  }
-
-  if (method === 'PATCH' && url.startsWith('/rewards/')) {
-    const rewardId = url.split('/')[2];
-    const reward = state.rewards.find((entry) => entry.id === rewardId);
-    if (!reward) {
-      return errorResponse('Reward not found.', 404);
-    }
-    Object.assign(reward, body ?? {});
-    const response: UpdateRewardResponse = {
-      reward,
-    };
-    return { status: 200, data: response as unknown as T };
-  }
-
-  if (method === 'GET' && url === '/offers') {
-    const response: OffersResponse = {
-      offers: state.offers,
-    };
-    return { status: 200, data: response as unknown as T };
-  }
-
-  return errorResponse(`Unhandled request ${method} ${url}`, 404);
-};
-
-function lookupCustomerById(id: string) {
+function lookupCustomerById(state: MockState, id: string) {
   const customer = state.customers.get(id);
   if (!customer) return undefined;
   return {
@@ -350,16 +353,10 @@ function lookupCustomerById(id: string) {
   };
 }
 
-export function lookupCustomerByEmail(email: string) {
-  for (const customer of state.customers.values()) {
-    if (customer.email.toLowerCase() === email.toLowerCase()) {
-      return lookupCustomerById(customer.id);
-    }
-  }
-  return undefined;
-}
-
-function pushActivity(entry: Omit<LoyaltyActivity, 'id' | 'occurredAt'> & { occurredAt?: string }) {
+function pushActivity(
+  state: MockState,
+  entry: Omit<LoyaltyActivity, 'id' | 'occurredAt'> & { occurredAt?: string },
+) {
   const activity: LoyaltyActivity = {
     id: generateId('act'),
     occurredAt: entry.occurredAt ?? new Date().toISOString(),
@@ -371,7 +368,12 @@ function pushActivity(entry: Omit<LoyaltyActivity, 'id' | 'occurredAt'> & { occu
   return activity;
 }
 
-function assignOfferToCustomer(customerId: string, offerId: string, expiresAt?: string) {
+function assignOfferToCustomer(
+  state: MockState,
+  customerId: string,
+  offerId: string,
+  expiresAt?: string,
+) {
   const offer = state.offers.find((entry) => entry.id === offerId);
   if (!offer) {
     throw new Error('Offer not found');
@@ -400,7 +402,7 @@ function assignOfferToCustomer(customerId: string, offerId: string, expiresAt?: 
   return entry;
 }
 
-function claimOfferForCustomer(customerId: string, customerOfferId: string): ClaimOfferResponse {
+function claimOfferForCustomer(state: MockState, customerId: string, customerOfferId: string) {
   const offersList = state.customerOfferStore.get(customerId) ?? [];
   const entry = offersList.find((offer) => offer.id === customerOfferId);
   if (!entry) {
@@ -436,12 +438,12 @@ function claimOfferForCustomer(customerId: string, customerOfferId: string): Cla
     reward.inventory = Math.max(0, reward.inventory - 1);
   }
 
-  const customer = lookupCustomerById(customerId);
+  const customer = lookupCustomerById(state, customerId);
   if (!customer) {
     throw new Error('Customer not found');
   }
 
-  const activity = pushActivity({
+  const activity = pushActivity(state, {
     customerId: customer.id,
     type: 'redeem',
     points: 0,
@@ -449,13 +451,14 @@ function claimOfferForCustomer(customerId: string, customerOfferId: string): Cla
     source: `${offer.name} (offer claim)`,
   });
 
-  return {
+  const response: ClaimOfferResponse = {
     customer,
     offer,
     customerOffer: entry,
     reward,
     activity,
   };
+  return response;
 }
 
 function updateOfferStatus(entry: CustomerOffer) {

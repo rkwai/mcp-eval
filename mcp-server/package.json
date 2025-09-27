@@ -10,6 +10,7 @@
     "build": "tsc -p .",
     "eval": "npm run clear && ts-node scripts/run-evals.ts",
     "eval:llm": "npm run clear && ts-node scripts/run-evals.ts --llm",
+    "eval:e2e": "npm run clear && ts-node scripts/run-evals.ts --live",
     "eval:report": "node scripts/eval-report.js",
     "clear": "rm -rf evals/logs"
   },

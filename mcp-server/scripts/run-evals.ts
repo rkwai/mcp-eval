@@ -6,11 +6,14 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import { runTool, ToolCall, resetEnvironment } from '../src';
+import { runTool, ToolCall } from '../src';
 import { ToolName, ToolArguments } from '../src/tools';
 import { runLlmSession, TranscriptMessage } from '../src/runtime/llm-session';
 import { loadEnv } from '../src/config/load-env';
 import { writeEvalLog } from '../src/evals/log_writer';
+import { createFetchTransport } from '../src/client/transport';
+import { useTransport } from '../src/client/support-adapter';
+import { createMockTransport } from '../src/client/mock-transport';
 
 loadEnv();
 const loggingEnabled = String(process.env.EVAL_LOGS_ENABLED ?? '').toLowerCase() === 'true';
@@ -70,8 +73,42 @@ type ConversationMessage = {
 
 const scenarioDir = path.join(__dirname, '..', 'evals', 'scenarios');
 
+type EnvironmentHooks = {
+  beforeScenario(): Promise<void>;
+  beforeVariant(): Promise<void>;
+};
+
 function createRunId() {
   return `${Date.now().toString(36)}-${randomUUID()}`;
+}
+
+function configureEnvironment(liveMode: boolean): EnvironmentHooks {
+  if (!liveMode) {
+    return {
+      beforeScenario: async () => {
+        useTransport(createMockTransport());
+      },
+      beforeVariant: async () => {
+        useTransport(createMockTransport());
+      },
+    };
+  }
+
+  const baseUrl = process.env.API_BASE_URL;
+  if (!baseUrl) {
+    console.error('API_BASE_URL is required when running evals with --live.');
+    process.exit(1);
+  }
+
+  const defaultHeaders = buildDefaultHeaders();
+  const timeoutMs = parsePositiveInt('API_TIMEOUT_MS', process.env.API_TIMEOUT_MS, 15000);
+  const transport = createFetchTransport({ baseUrl, defaultHeaders, timeoutMs });
+  useTransport(transport);
+
+  return {
+    beforeScenario: async () => {},
+    beforeVariant: async () => {},
+  };
 }
 
 async function main() {
@@ -84,6 +121,11 @@ async function main() {
       type: 'boolean',
       default: false,
     })
+    .option('live', {
+      type: 'boolean',
+      default: false,
+      describe: 'Route tool calls through the live HTTP adapter (implies --llm).',
+    })
     .option('llm', {
       type: 'boolean',
       default: false,
@@ -91,8 +133,15 @@ async function main() {
     })
     .parse();
 
-  const useLlm = Boolean(argv.llm);
-  if (useLlm) {
+  const liveMode = Boolean(argv.live);
+  const envHooks = configureEnvironment(liveMode);
+
+  const useLlm = liveMode || Boolean(argv.llm);
+  if (liveMode) {
+    console.log(
+      '⚙️  Running live end-to-end evals (LLM + live adapter). Ensure API_BASE_URL and LLM_* env vars are configured.',
+    );
+  } else if (useLlm) {
     console.log(
       '⚙️  Running evals with LLM tool selection (provider: openrouter). Ensure LLM_MODEL, LLM_PROVIDER_API_KEY, and LLM_PROVIDER_BASE_URL are set.',
     );
@@ -109,7 +158,7 @@ async function main() {
   const executions: ScenarioExecution[] = [];
   for (const scenario of scenarios) {
     if (useLlm) {
-      const variantExecutions = await runScenarioLlm(scenario, argv.verbose ?? false);
+      const variantExecutions = await runScenarioLlm(scenario, envHooks, argv.verbose ?? false);
       executions.push(...variantExecutions);
 
       if (loggingEnabled) {
@@ -127,7 +176,7 @@ async function main() {
         }
       }
     } else {
-      const execution = await runScenarioTools(scenario, argv.verbose ?? false);
+      const execution = await runScenarioTools(scenario, envHooks, argv.verbose ?? false);
       executions.push(execution);
 
       if (loggingEnabled) {
@@ -249,8 +298,12 @@ function appendError(existing: string | undefined, addition: string | undefined)
   return `${existing}; ${addition}`;
 }
 
-async function runScenarioTools(scenario: Scenario, verbose: boolean): Promise<ScenarioExecution> {
-  resetEnvironment();
+async function runScenarioTools(
+  scenario: Scenario,
+  envHooks: EnvironmentHooks,
+  verbose: boolean,
+): Promise<ScenarioExecution> {
+  await envHooks.beforeScenario();
   console.log(`\n=== ${scenario.id} ===`);
   const captures: Record<string, unknown> = {};
   const failures: string[] = [];
@@ -338,6 +391,7 @@ async function runScenarioTools(scenario: Scenario, verbose: boolean): Promise<S
 
 async function runScenarioLlm(
   scenario: Scenario,
+  envHooks: EnvironmentHooks,
   verbose: boolean,
 ): Promise<ScenarioExecution[]> {
   console.log(`\n=== ${scenario.id} ===`);
@@ -356,6 +410,7 @@ async function runScenarioLlm(
     ];
   }
 
+  await envHooks.beforeScenario();
   const conversationVariants = expandConversationVariants(scenario.conversation);
   const executions: ScenarioExecution[] = [];
   const variantCount = conversationVariants.length;
@@ -372,6 +427,7 @@ async function runScenarioLlm(
       script,
       variantScenarioId,
       verbose,
+      envHooks,
     });
 
     executions.push(execution);
@@ -397,6 +453,7 @@ type RunScenarioVariantArgs = {
   script: ConversationMessage[];
   variantScenarioId: string;
   verbose: boolean;
+  envHooks: EnvironmentHooks;
 };
 
 async function runScenarioLlmVariant({
@@ -404,8 +461,9 @@ async function runScenarioLlmVariant({
   script,
   variantScenarioId,
   verbose,
+  envHooks,
 }: RunScenarioVariantArgs): Promise<ScenarioExecution> {
-  resetEnvironment();
+  await envHooks.beforeVariant();
   const failures: string[] = [];
   const captures: Record<string, unknown> = {};
   const toolCalls: ToolCallLog[] = [];
@@ -445,6 +503,8 @@ async function runScenarioLlmVariant({
     }
 
     match.matched = true;
+    const expectedArgs = interpolate(step.arguments ?? {}, captures) as Record<string, unknown>;
+    const actualArgs = (match.arguments ?? {}) as Record<string, unknown>;
     const callLog: ToolCallLog = {
       label: stepLabel,
       name: match.name,
@@ -452,6 +512,15 @@ async function runScenarioLlmVariant({
       status: match.error ? 'error' : 'success',
       error: match.error,
     };
+
+    if (Object.keys(expectedArgs).length > 0) {
+      const argumentFailures = compareArguments(expectedArgs, actualArgs);
+      for (const failure of argumentFailures) {
+        const message = `argument ${failure}`;
+        failures.push(`${stepLabel}: ${message}`);
+        callLog.error = appendError(callLog.error, message);
+      }
+    }
 
     const expectedStatus = step.expect?.status ?? 'success';
     if (expectedStatus === 'success' && match.error) {
@@ -650,6 +719,74 @@ function deepEqual(left: unknown, right: unknown): boolean {
   }
 
   return false;
+}
+
+function compareArguments(
+  expected: Record<string, unknown>,
+  actual: Record<string, unknown>,
+): string[] {
+  const failures: string[] = [];
+  for (const [key, expectedValue] of Object.entries(expected)) {
+    if (!(key in actual)) {
+      failures.push(`${key} missing`);
+      continue;
+    }
+    const actualValue = actual[key];
+    if (!deepEqual(actualValue, expectedValue)) {
+      failures.push(
+        `${key} expected ${JSON.stringify(expectedValue)} but received ${JSON.stringify(actualValue)}`,
+      );
+    }
+  }
+  return failures;
+}
+
+function buildDefaultHeaders(): Record<string, string> | undefined {
+  const headers = parseHeadersFromEnv('API_DEFAULT_HEADERS', process.env.API_DEFAULT_HEADERS) ?? {};
+  const bearer = process.env.API_BEARER_TOKEN;
+  if (bearer && !headers.Authorization) {
+    headers.Authorization = `Bearer ${bearer}`;
+  }
+  return Object.keys(headers).length ? headers : undefined;
+}
+
+function parseHeadersFromEnv(
+  name: string,
+  raw: string | undefined,
+): Record<string, string> | undefined {
+  if (!raw || raw.trim() === '') {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error(`${name} must be a JSON object.`);
+    }
+
+    const headers: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (value === undefined || value === null) {
+        continue;
+      }
+      headers[key] = String(value);
+    }
+    return headers;
+  } catch (error) {
+    throw new Error(`${name} must be valid JSON: ${(error as Error).message}`);
+  }
+}
+
+function parsePositiveInt(name: string, raw: string | undefined, fallback: number): number {
+  if (!raw || raw.trim() === '') {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return parsed;
 }
 
 

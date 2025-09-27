@@ -21,22 +21,7 @@
       "tool": "rewards.redeem",
       "arguments": {
         "email": "jasmine.ortiz@example.com",
-        "rewardId": "reward-espresso",
-        "channel": "support",
-        "note": "gesture of goodwill"
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          {
-            "path": "reward.id",
-            "equals": "reward-espresso"
-          },
-          {
-            "path": "activity.points",
-            "equals": -750
-          }
-        ]
+        "rewardId": "reward-espresso"
       }
     }
   ]

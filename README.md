@@ -17,6 +17,13 @@ This repository demonstrates how to treat an MCP server as an **application** th
 ## Getting started
 1. Clone the template.
 2. Read `mcp-server/README.md` to wire the adapter, update the system prompt, and implement your flow tools.
-3. Use the eval harness (`npm run eval`, `npm run eval:llm`) to keep behaviour regression-free as you evolve your server.
+3. Use the eval harness to keep behaviour regression-free as you evolve your server.
+
+## Evaluation modes
+- `npm run eval` – deterministic harness that calls each flow directly and verifies expected tool arguments still succeed.
+- `npm run eval:llm` – runs the scenarios with an LLM deciding which flow to call; assertions confirm that the model chose the correct tools and arguments.
+- `npm run eval:e2e` – end-to-end run that combines the LLM harness with a live HTTP adapter so you can validate tool sequencing against real services.
+
+Scenarios deliberately assert **tool** usage (names + arguments) instead of downstream API payloads so you can iterate on adapters and datasets without rewriting tests.
 
 Treat this repo as a starting point: replace the mock adapter with production integrations, adapt the flows to your domain, and extend the evals to match your real support or operations scenarios.

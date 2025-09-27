@@ -11,7 +11,7 @@ import {
   AssignOfferResponse,
   ClaimOfferResponse,
 } from '../types';
-import { httpGet, httpPost, httpPatch } from '../client/api';
+import { getSupportAdapter } from '../client/support-adapter';
 
 interface LookupCustomerArgs {
   customerId?: string;
@@ -113,12 +113,13 @@ interface RestockRewardFlowArgs {
 }
 
 export async function lookupCustomer(args: LookupCustomerArgs) {
-  const identifier = await resolveCustomerId(args);
-  const { data: customer } = await httpGet<CustomerDetailResponse>(`/customers/${identifier}`);
+  const adapter = getSupportAdapter();
+  const identifier = await resolveCustomerId(adapter, args);
+  const customer = await adapter.getCustomer(identifier);
 
   let history: CustomerHistoryResponse['history'] = [];
   if (args.includeHistory) {
-    const { data } = await httpGet<CustomerHistoryResponse>(`/customers/${identifier}/history`);
+    const data = await adapter.getCustomerHistory(identifier);
     history = args.historyLimit ? data.history.slice(0, args.historyLimit) : data.history;
   }
 
@@ -133,7 +134,8 @@ export async function activitySummary(args: ActivitySummaryArgs) {
     throw new Error('customerId is required');
   }
 
-  const { data } = await httpGet<CustomerHistoryResponse>(`/customers/${args.customerId}/history`);
+  const adapter = getSupportAdapter();
+  const data = await adapter.getCustomerHistory(args.customerId);
   const records = args.limit ? data.history.slice(0, args.limit) : data.history;
   const totals = records.reduce(
     (acc, entry) => {
@@ -159,6 +161,7 @@ export async function activitySummary(args: ActivitySummaryArgs) {
 }
 
 export async function issueGoodwill(args: IssueGoodwillArgs) {
+  const adapter = getSupportAdapter();
   if (!args.customerId) {
     throw new Error('customerId is required');
   }
@@ -169,7 +172,7 @@ export async function issueGoodwill(args: IssueGoodwillArgs) {
     throw new Error('reason is required');
   }
 
-  const { data } = await httpPost<EarnPointsResponse>(`/customers/${args.customerId}/earn`, {
+  return adapter.earnPoints(args.customerId, {
     points: Math.round(args.points),
     source: `Goodwill - ${args.reason.trim()}`,
     channel: args.channel,
@@ -178,11 +181,10 @@ export async function issueGoodwill(args: IssueGoodwillArgs) {
       issuedBy: 'support',
     },
   });
-
-  return data;
 }
 
 export async function redeemReward(args: RedeemRewardArgs) {
+  const adapter = getSupportAdapter();
   if (!args.customerId) {
     throw new Error('customerId is required');
   }
@@ -190,17 +192,16 @@ export async function redeemReward(args: RedeemRewardArgs) {
     throw new Error('rewardId is required');
   }
 
-  const { data } = await httpPost<RedeemRewardResponse>(`/customers/${args.customerId}/redeem`, {
+  return adapter.redeemReward(args.customerId, {
     rewardId: args.rewardId,
     channel: args.channel,
     metadata: args.note ? { note: args.note } : undefined,
   });
-
-  return data;
 }
 
 export async function catalogSnapshot(args: CatalogSnapshotArgs = {}) {
-  const { data } = await httpGet<RewardCatalogResponse>('/rewards');
+  const adapter = getSupportAdapter();
+  const data = await adapter.listRewards();
   const filtered = data.rewards.filter((reward) => {
     if (args.onlyActive && !reward.active) return false;
     if (typeof args.minInventory === 'number') {
@@ -220,6 +221,7 @@ export async function catalogSnapshot(args: CatalogSnapshotArgs = {}) {
 }
 
 export async function restockReward(args: RestockRewardArgs) {
+  const adapter = getSupportAdapter();
   if (!args.rewardId) {
     throw new Error('rewardId is required');
   }
@@ -234,12 +236,13 @@ export async function restockReward(args: RestockRewardArgs) {
     payload.active = args.active;
   }
 
-  const { data } = await httpPatch<UpdateRewardResponse>(`/rewards/${args.rewardId}`, payload);
+  const data = await adapter.updateReward(args.rewardId, payload);
   return data.reward;
 }
 
 export async function offerCatalog(args: OfferCatalogArgs = {}) {
-  const { data } = await httpGet<OffersResponse>('/offers');
+  const adapter = getSupportAdapter();
+  const data = await adapter.listOffers();
   const offers = args.onlyActive
     ? data.offers.filter((offer) => offer.active && !isExpired(offer.endDate))
     : data.offers;
@@ -251,11 +254,12 @@ export async function offerCatalog(args: OfferCatalogArgs = {}) {
 }
 
 export async function customerOffers(args: CustomerOffersArgs) {
+  const adapter = getSupportAdapter();
   if (!args.customerId) {
     throw new Error('customerId is required');
   }
 
-  const { data } = await httpGet<CustomerOffersResponse>(`/customers/${args.customerId}/offers`);
+  const data = await adapter.listCustomerOffers(args.customerId);
   const offers = args.includeExpired ? data.offers : data.offers.filter((entry) => entry.status !== 'expired');
 
   return {
@@ -265,6 +269,7 @@ export async function customerOffers(args: CustomerOffersArgs) {
 }
 
 export async function assignOffer(args: AssignOfferArgs) {
+  const adapter = getSupportAdapter();
   if (!args.customerId) {
     throw new Error('customerId is required');
   }
@@ -272,7 +277,7 @@ export async function assignOffer(args: AssignOfferArgs) {
     throw new Error('offerId is required');
   }
 
-  const { data } = await httpPost<AssignOfferResponse>(`/customers/${args.customerId}/offers`, {
+  const data = await adapter.assignOffer(args.customerId, {
     offerId: args.offerId,
     expiresAt: args.expiresAt,
   });
@@ -281,6 +286,7 @@ export async function assignOffer(args: AssignOfferArgs) {
 }
 
 export async function claimOffer(args: ClaimOfferArgs) {
+  const adapter = getSupportAdapter();
   if (!args.customerId) {
     throw new Error('customerId is required');
   }
@@ -288,12 +294,7 @@ export async function claimOffer(args: ClaimOfferArgs) {
     throw new Error('customerOfferId is required');
   }
 
-  const { data } = await httpPost<ClaimOfferResponse>(
-    `/customers/${args.customerId}/offers/${args.customerOfferId}/claim`,
-    {},
-  );
-
-  return data;
+  return adapter.claimOffer(args.customerId, args.customerOfferId);
 }
 
 export async function snapshotCustomerFlow(args: SnapshotCustomerFlowArgs) {
@@ -428,14 +429,18 @@ export async function restockRewardFlow(args: RestockRewardFlowArgs) {
     payload.active = args.active;
   }
 
-  const { data } = await httpPatch<UpdateRewardResponse>(`/rewards/${reward.id}`, payload);
+  const adapter = getSupportAdapter();
+  const data = await adapter.updateReward(reward.id, payload);
 
   return {
     reward: data.reward,
   };
 }
 
-async function resolveCustomerId({ customerId, email }: LookupCustomerArgs) {
+async function resolveCustomerId(
+  adapter: ReturnType<typeof getSupportAdapter>,
+  { customerId, email }: LookupCustomerArgs,
+) {
   if (customerId) {
     return customerId;
   }
@@ -443,7 +448,7 @@ async function resolveCustomerId({ customerId, email }: LookupCustomerArgs) {
     throw new Error('Provide either customerId or email');
   }
 
-  const { data } = await httpGet<CustomerListResponse>('/customers');
+  const data = await adapter.listCustomers();
   const match = data.customers.find((customer) => customer.email.toLowerCase() === email.toLowerCase());
   if (!match) {
     throw new Error(`Customer with email ${email} not found`);

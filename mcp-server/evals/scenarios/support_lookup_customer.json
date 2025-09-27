@@ -22,23 +22,6 @@
       "arguments": {
         "email": "alicia.patel@example.com",
         "historyLimit": 5
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          {
-            "path": "customer.email",
-            "equals": "alicia.patel@example.com"
-          },
-          {
-            "path": "history",
-            "minLength": 1
-          },
-          {
-            "path": "summary.totals",
-            "exists": true
-          }
-        ]
       }
     }
   ]

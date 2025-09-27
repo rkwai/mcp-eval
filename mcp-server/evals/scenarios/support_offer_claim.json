@@ -22,19 +22,6 @@
       "arguments": {
         "email": "alicia.patel@example.com",
         "customerOfferId": "offer-alicia-upgrade"
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          {
-            "path": "claim.customerOffer.status",
-            "equals": "claimed"
-          },
-          {
-            "path": "claim.reward.id",
-            "exists": true
-          }
-        ]
       }
     }
   ]

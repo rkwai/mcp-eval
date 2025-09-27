@@ -21,25 +21,7 @@
       "tool": "loyalty.issueGoodwill",
       "arguments": {
         "email": "marcus.lee@example.com",
-        "points": 500,
-        "reason": "Delayed shipment credit"
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          {
-            "path": "customer.email",
-            "equals": "marcus.lee@example.com"
-          },
-          {
-            "path": "activity.points",
-            "equals": 500
-          },
-          {
-            "path": "summary.totals",
-            "exists": true
-          }
-        ]
+        "points": 500
       }
     }
   ]

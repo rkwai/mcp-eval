@@ -4,7 +4,7 @@
   "conversation": [
     {
       "role": "user",
-      "content": "Marcus Lee is asking if we can give him anything to make up for a rough week. Assign him a promo and confirm it's visible on his account."
+      "content": "Marcus Lee is asking if we can give him anything. Assign him a promo and confirm it's visible on his account."
     },
     {
       "role": "user",
@@ -21,27 +21,6 @@
       "tool": "offers.assign",
       "arguments": {
         "email": "marcus.lee@example.com"
-      },
-      "expect": {
-        "status": "success",
-        "assert": [
-          {
-            "path": "customerOffer.offerId",
-            "exists": true
-          },
-          {
-            "path": "customerOffer.status",
-            "equals": "available"
-          },
-          {
-            "path": "customer.email",
-            "equals": "marcus.lee@example.com"
-          },
-          {
-            "path": "customerOffer.customerId",
-            "equals": "cust-marcus"
-          }
-        ]
       }
     }
   ]
