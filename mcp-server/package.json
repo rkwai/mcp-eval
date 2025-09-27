@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "node -e \"console.log('MCP server exposes tools only. Use npm run eval to exercise scenarios.')\"",
-    "serve": "ts-node src/runtime/stdio-entry.ts",
+    "serve": "ts-node src/runtime/http-entry.ts",
+    "serve:stdio": "ts-node src/runtime/stdio-entry.ts",
     "build": "tsc -p .",
     "eval": "npm run clear && ts-node scripts/run-evals.ts",
     "eval:llm": "npm run clear && ts-node scripts/run-evals.ts --llm",

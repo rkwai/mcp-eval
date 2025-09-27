@@ -1,5 +1,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
@@ -11,12 +12,15 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { systemPrompt } from '../index';
 import { TOOL_CONFIG } from '../tools';
 
-export interface StartServerOptions {
+export interface CreateServerOptions {
   name?: string;
   version?: string;
   description?: string;
   instructions?: string;
-  transport?: StdioServerTransport;
+}
+
+export interface StartServerOptions extends CreateServerOptions {
+  transport?: Transport;
 }
 
 function serializeResult(result: unknown): string {
@@ -40,10 +44,7 @@ function serializeError(error: unknown): string {
   return `[error] ${String(error)}`;
 }
 
-/**
- * Bootstraps an MCP server over stdio so MCP-compatible clients can connect.
- */
-export async function startMcpServer(options: StartServerOptions = {}) {
+export function createMcpServer(options: CreateServerOptions = {}) {
   const server = new Server({
     name: options.name ?? 'loyalty-support-mcp',
     version: options.version ?? '0.1.0',
@@ -106,8 +107,18 @@ export async function startMcpServer(options: StartServerOptions = {}) {
     });
   };
 
+  return server;
+}
+
+/**
+ * Bootstraps an MCP server over stdio (or provided transport) so MCP-compatible clients can connect.
+ */
+export async function startMcpServer(options: StartServerOptions = {}) {
+  const server = createMcpServer(options);
   const transport = options.transport ?? new StdioServerTransport();
   await server.connect(transport);
-  console.log('[mcp-server] Waiting for MCP client connection...');
+  if (!options.transport) {
+    console.log('[mcp-server] Waiting for MCP client connection...');
+  }
   return server;
 }

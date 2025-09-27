@@ -8,7 +8,8 @@ This directory contains the runnable MCP server that ships with the template. Ev
   - `src/tools/support.ts` contains the flow logic (e.g., look up a customer, issue goodwill, redeem a reward).
   - `src/tools/index.ts` maps the exported flows to MCP tool definitions (`customer.snapshot`, `loyalty.issueGoodwill`, `offers.assign`, etc.). Extend this file when you add new flows.
 - `src/runtime/` –
-  - `stdio-entry.ts`: starts the MCP server over stdio.
+  - `http-entry.ts`: streamable HTTP bootstrap used by `npm run serve`.
+  - `stdio-entry.ts`: legacy stdio bootstrap for clients without HTTP support.
   - `server.ts`: registers the flow tools with the MCP SDK.
   - `llm-session.ts`: optional OpenRouter harness for LLM-in-the-loop evals.
 - `src/config/load-env.ts` – lightweight `.env` loader shared by the runtime and scripts.
@@ -26,7 +27,8 @@ This directory contains the runnable MCP server that ships with the template. Ev
 npm install
 cp .env.example .env
 npm run build
-npm run serve   # expose the MCP server over stdio
+npm run serve        # launch streamable HTTP server (default http://0.0.0.0:3030/mcp)
+# npm run serve:stdio # legacy stdio transport if your client does not support HTTP
 ```
 
 Evaluation (optional):
@@ -38,21 +40,41 @@ Logs are written to `evals/logs/` only when `EVAL_LOGS_ENABLED=true`.
 
 ## Connect from MCP clients
 
-### Cursor (example)
+### Streamable HTTP (default)
+1. Start the server:
+   ```bash
+   npm run serve
+   ```
+   By default it listens on `http://0.0.0.0:3030/mcp`; override `MCP_HTTP_HOST` and `MCP_HTTP_PORT` in `.env` if needed.
+2. Point your MCP client at the HTTP endpoint. Most clients that understand the streamable HTTP transport accept a configuration similar to:
+   ```json
+   {
+     "mcpServers": {
+       "skyward-rewards": {
+         "transport": {
+           "type": "http",
+           "url": "http://localhost:3030/mcp"
+         }
+       }
+     }
+   }
+   ```
+   Consult your client's documentation for the exact schema and how to attach authentication headers if required.
+
+### Cursor and other stdio-only clients
+Some clients (Cursor stable builds, older IDE integrations) still launch MCP servers as local child processes over stdio. Use the fallback script in those cases:
 1. Install dependencies and build once:
    ```bash
    npm install
    npm run build
    ```
-   (Optional) create a `.env` file if you plan to run LLM-backed evals—set `LLM_MODEL`, `LLM_PROVIDER_API_KEY`, and any adapter config you introduce.
-2. In Cursor, open the command palette (`Cmd/Ctrl` + `Shift` + `P`) and run **“Cursor: Open Settings (JSON)”**.
-3. Add (or extend) the `"mcpServers"` section with an entry pointing at this directory. Use absolute paths so Cursor can launch the server:
+2. In `mcp.json`, keep the command-based entry but invoke `npm run serve:stdio`:
    ```json
    {
      "mcpServers": {
        "skyward-rewards": {
          "command": "npm",
-         "args": ["run", "serve"],
+         "args": ["run", "serve:stdio"],
          "cwd": "{{pwd}}/mcp-eval/mcp-server",
          "env": {
            "NODE_ENV": "production"
@@ -61,18 +83,17 @@ Logs are written to `evals/logs/` only when `EVAL_LOGS_ENABLED=true`.
      }
    }
    ```
-   Cursor will execute `npm run serve` and connect over stdio, so ensure any required environment variables are present in `.env` (or inline via `env`).
-   Sometimes Cursor will have trouble finding the correct path, so a startup script will be needed
+   For situations where the server is not found, the startup script will be needed
    ```json
    {
      "mcpServers": {
        "skyward-rewards": {
-        "command": "{{pwd}}/mcp-eval/mcp-server/scripts/start-mcp.sh"
+         "command": "{{pwd}}/mcp-eval/mcp-server/scripts/start-mcp.sh"
        }
      }
    }
-   ```   
-4. Restart Cursor. The MCP server should now be available in the MCP pane; start it from there before issuing support requests.
+   ```
+3. Restart Cursor and start the server from the MCP panel before sending tool calls.
 
 ## Adding a new flow tool
 1. Implement the workflow in `src/tools/support.ts` (or a new module) with the minimal inputs required.
