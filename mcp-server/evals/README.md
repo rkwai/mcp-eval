@@ -1,12 +1,12 @@
 # Evals
 
-This directory stores the flow-level evaluation scenarios. Each scenario checks that a single MCP tool satisfies a support request end-to-end. Assertions focus on **which tool was invoked and the arguments it received**; response payloads are treated as opaque so adapter tweaks or dataset changes do not force scenario rewrites.
+This directory stores the flow-level evaluation scenarios. Each scenario checks that a single MCP tool satisfies a support request end-to-end. Assertions focus on **which tool was invoked and the arguments it received**; response payloads are treated as opaque so adapter tweaks, dataset changes, or DSPy optimisation loops do not force scenario rewrites.
 
 ## Running evals
-- `npm run eval` – deterministic mode. Calls each flow directly with the mock adapter (or your live adapter once you swap it in).
-- `npm run eval:llm` – OpenRouter LLM drives the same scenarios. The harness verifies that the required flow tool appears and that the arguments match the scenario definition.
-- `npm run eval:e2e` – LLM-driven run that also swaps in the live HTTP adapter (configure `API_*` and `LLM_*` variables first). Use this to validate tool sequencing against real services.
-- Optional logging: set `EVAL_LOGS_ENABLED=true` in `.env` to write JSONL transcripts + tool-call summaries to `evals/logs/`.
+- `npm run eval` – deterministic mode. Calls each flow directly with the mock adapter (or your live adapter once you swap it in) through Ax DSPy programs. When GEPA is enabled, optimisation captures are logged alongside results.
+- `npm run eval:llm` – OpenRouter LLM drives the same scenarios. The harness verifies that the required flow tool appears and that the arguments match the scenario definition, while Ax optimisation traces (if any) are stored with the run.
+- `npm run eval:e2e` – LLM-driven run that also swaps in the live HTTP adapter (configure `API_*` and `LLM_*` variables first). Use this to validate tool sequencing against real services; GEPA runs can evaluate prompts against live data.
+- Optional logging: set `EVAL_LOGS_ENABLED=true` in `.env` to write JSONL transcripts + tool-call summaries to `evals/logs/`. When Ax optimisation runs during evals, the logs include the Pareto frontier, score history, and configuration deltas.
 - The harness re-instantiates the mock adapter before every scenario (and each LLM prompt variant) so runs stay independent without explicit state resets.
 
 ## Scenario format
@@ -17,6 +17,7 @@ This directory stores the flow-level evaluation scenarios. Each scenario checks 
   - `tool` – flow tool name (e.g., `loyalty.issueGoodwill`).
   - `arguments` – JSON payload the tool must receive. The LLM harness enforces key/value equality (extra arguments are allowed).
   - `expect.status` (optional) – Expected success/error, defaults to `success`.
+  - `capture` (optional) – Tokens to stash from the tool response. Useful when you want to reference outputs in later steps or log them with Ax optimisation results.
 
 ## Current scenarios (Skyward Rewards)
 - `support_lookup_customer` → `customer.snapshot`

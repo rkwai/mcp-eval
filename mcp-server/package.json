@@ -15,6 +15,7 @@
     "clear": "rm -rf evals/logs"
   },
   "dependencies": {
+    "@ax-llm/ax": "^14.0.31",
     "@modelcontextprotocol/sdk": "^1.18.2",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.24.6"

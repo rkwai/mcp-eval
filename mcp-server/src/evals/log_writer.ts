@@ -16,6 +16,7 @@ export type EvalLogEntry = {
     error?: string;
   }>;
   transcript?: Array<{ role: string; content: string }>;
+  optimization?: Array<Record<string, unknown>>;
 };
 
 const LOG_DIR = join(process.cwd(), 'evals', 'logs');

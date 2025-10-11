@@ -12,6 +12,8 @@ import {
   ClaimOfferResponse,
 } from '../types';
 import { getSupportAdapter } from '../client/support-adapter';
+import { runSupportProgram } from '../ax/registry';
+import type { AxOptimizationConfig } from '../ax/programs';
 
 interface LookupCustomerArgs {
   customerId?: string;
@@ -298,6 +300,9 @@ export async function claimOffer(args: ClaimOfferArgs) {
 }
 
 export async function snapshotCustomerFlow(args: SnapshotCustomerFlowArgs) {
+  const optimization = resolveOptimizationConfig('snapshot');
+  await runSupportProgram('snapshot', { ...args }, optimization);
+
   const { customer, history } = await lookupCustomer({
     email: args.email,
     includeHistory: args.includeHistory ?? true,
@@ -311,6 +316,8 @@ export async function snapshotCustomerFlow(args: SnapshotCustomerFlowArgs) {
 }
 
 export async function issueGoodwillFlow(args: IssueGoodwillFlowArgs) {
+  const optimization = resolveOptimizationConfig('issueGoodwill');
+  await runSupportProgram('issueGoodwill', { ...args }, optimization);
   const { customer } = await lookupCustomer({ email: args.email, includeHistory: false });
   const result = await issueGoodwill({
     customerId: customer.id,
@@ -327,6 +334,8 @@ export async function issueGoodwillFlow(args: IssueGoodwillFlowArgs) {
 }
 
 export async function assignOfferFlow(args: AssignOfferFlowArgs) {
+  const optimization = resolveOptimizationConfig('assignOffer');
+  await runSupportProgram('assignOffer', { ...args }, optimization);
   const { customer } = await lookupCustomer({ email: args.email, includeHistory: false });
   let offerId = args.offerId;
   if (!offerId) {
@@ -346,6 +355,8 @@ export async function assignOfferFlow(args: AssignOfferFlowArgs) {
 }
 
 export async function claimOfferFlow(args: ClaimOfferFlowArgs) {
+  const optimization = resolveOptimizationConfig('claimOffer');
+  await runSupportProgram('claimOffer', { ...args }, optimization);
   const { customer } = await lookupCustomer({ email: args.email, includeHistory: false });
   let customerOfferId = args.customerOfferId;
   let offersSnapshot = await customerOffers({ customerId: customer.id, includeExpired: false });
@@ -369,6 +380,8 @@ export async function claimOfferFlow(args: ClaimOfferFlowArgs) {
 }
 
 export async function redeemRewardFlow(args: RedeemRewardFlowArgs) {
+  const optimization = resolveOptimizationConfig('redeemReward');
+  await runSupportProgram('redeemReward', { ...args }, optimization);
   const { customer } = await lookupCustomer({ email: args.email, includeHistory: false });
   let rewardId = args.rewardId;
   if (!rewardId) {
@@ -394,6 +407,8 @@ export async function redeemRewardFlow(args: RedeemRewardFlowArgs) {
 }
 
 export async function restockRewardFlow(args: RestockRewardFlowArgs) {
+  const optimization = resolveOptimizationConfig('restockReward');
+  await runSupportProgram('restockReward', { ...args }, optimization);
   const catalog = await catalogSnapshot({ onlyActive: false });
   let reward = args.rewardId
     ? catalog.rewards.find((entry) => entry.id === args.rewardId)
@@ -460,4 +475,18 @@ async function resolveCustomerId(
 function isExpired(date?: string) {
   if (!date) return false;
   return new Date(date).getTime() < Date.now();
+}
+
+function resolveOptimizationConfig(_flow: string): AxOptimizationConfig {
+  const enabled = process.env.AX_GEPA_ENABLED === 'true';
+  const optimizer = (process.env.AX_GEPA_OPTIMIZER as 'gepa' | 'gepa-flow') ?? 'gepa';
+  const autoLevel = (process.env.AX_GEPA_AUTO as 'light' | 'medium' | 'heavy') ?? 'light';
+  const teacherInstructions = process.env.AX_GEPA_TEACHER ?? undefined;
+
+  return {
+    enabled,
+    optimizer,
+    autoLevel,
+    teacherInstructions,
+  };
 }

@@ -11,6 +11,7 @@ import { ToolName, ToolArguments } from '../src/tools';
 import { runLlmSession, TranscriptMessage } from '../src/runtime/llm-session';
 import { loadEnv } from '../src/config/load-env';
 import { writeEvalLog } from '../src/evals/log_writer';
+import { drainOptimizationCaptures } from '../src/ax/capture';
 import { createFetchTransport } from '../src/client/transport';
 import { useTransport } from '../src/client/support-adapter';
 import { createMockTransport } from '../src/client/mock-transport';
@@ -162,6 +163,11 @@ async function main() {
       executions.push(...variantExecutions);
 
       if (loggingEnabled) {
+        const optimizationRuns = drainOptimizationCaptures().map((entry) => ({
+          program: entry.program,
+          timestamp: entry.timestamp,
+          capture: entry.capture,
+        }));
         for (const execution of variantExecutions) {
           writeEvalLog({
             timestamp: new Date().toISOString(),
@@ -172,6 +178,7 @@ async function main() {
             failures: execution.result.failures,
             toolCalls: execution.toolCalls,
             transcript: execution.transcript?.map((entry) => ({ role: entry.role, content: entry.content })),
+            optimization: optimizationRuns.length ? optimizationRuns : undefined,
           });
         }
       }
@@ -180,6 +187,11 @@ async function main() {
       executions.push(execution);
 
       if (loggingEnabled) {
+        const optimization = drainOptimizationCaptures().map((entry) => ({
+          program: entry.program,
+          timestamp: entry.timestamp,
+          capture: entry.capture,
+        }));
         writeEvalLog({
           timestamp: new Date().toISOString(),
           runId: createRunId(),
@@ -189,6 +201,7 @@ async function main() {
           failures: execution.result.failures,
           toolCalls: execution.toolCalls,
           transcript: execution.transcript?.map((entry) => ({ role: entry.role, content: entry.content })),
+          optimization: optimization.length ? optimization : undefined,
         });
       }
     }
