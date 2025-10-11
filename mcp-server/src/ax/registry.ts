@@ -1,4 +1,5 @@
-import { ensureProgram, runProgram, type SupportProgramName, type AxOptimizationConfig } from './programs';
+import { ensureProgram, runProgram } from './programs';
+import type { SupportProgramName, AxOptimizationConfig } from './types';
 
 export async function runSupportProgram(
   name: SupportProgramName,

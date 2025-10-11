@@ -13,7 +13,7 @@ import {
 } from '../types';
 import { getSupportAdapter } from '../client/support-adapter';
 import { runSupportProgram } from '../ax/registry';
-import type { AxOptimizationConfig } from '../ax/programs';
+import type { AxOptimizationConfig } from '../ax/types';
 
 interface LookupCustomerArgs {
   customerId?: string;

@@ -1,4 +1,4 @@
-import type { AxEvaluationCapture, SupportProgramName } from './programs';
+import type { AxEvaluationCapture, SupportProgramName } from './types';
 
 export interface OptimizationCaptureEntry {
   program: SupportProgramName;

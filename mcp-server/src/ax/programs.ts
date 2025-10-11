@@ -1,28 +1,7 @@
 import { getSupportAdapter } from '../client/support-adapter';
 import { recordOptimizationCapture } from './capture';
-
-export type SupportProgramName =
-  | 'snapshot'
-  | 'issueGoodwill'
-  | 'assignOffer'
-  | 'claimOffer'
-  | 'redeemReward'
-  | 'restockReward';
-
-export interface AxOptimizationConfig {
-  enabled: boolean;
-  optimizer: 'gepa' | 'gepa-flow';
-  autoLevel?: 'light' | 'medium' | 'heavy';
-  teacherInstructions?: string;
-}
-
-export interface AxEvaluationCapture {
-  progress: Array<Record<string, unknown>>;
-  metadata: Record<string, unknown>;
-  paretoFront?: Array<Record<string, unknown>>;
-  scoreHistory?: number[];
-  configurationHistory?: Array<Record<string, unknown>>;
-}
+import { PROMPTS } from './prompts';
+import type { SupportProgramName, AxOptimizationConfig, AxEvaluationCapture } from './types';
 
 const PROGRAM_SIGNATURES: Record<SupportProgramName, string> = {
   snapshot: `email:string, includeHistory?:boolean, historyLimit?:number -> customer:json, history:json, summary:json`,
@@ -68,14 +47,21 @@ export async function runProgram(
     return { output: {}, capture: undefined };
   }
 
-  const provider = (process.env.AX_PROVIDER ?? 'openrouter') as string;
   const baseURL = process.env.AX_BASE_URL ?? process.env.LLM_PROVIDER_BASE_URL;
+  const provider = (process.env.AX_PROVIDER ?? process.env.LLM_PROVIDER ?? 'openrouter') as string;
+  const studentModel = process.env.AX_LLM_MODEL ?? process.env.LLM_MODEL ?? 'openrouter/auto';
+  const teacherModel = process.env.AX_TEACHER_MODEL ?? studentModel;
+  const studentInstructions = PROMPTS[name].student;
 
   const studentAI = runtime.ai({
     name: provider,
     apiKey,
     baseURL,
+    instructions: studentInstructions,
   });
+  if (typeof studentAI.setOptions === 'function') {
+    studentAI.setOptions({ model: studentModel });
+  }
 
   let capture: AxEvaluationCapture | undefined;
 
@@ -85,17 +71,22 @@ export async function runProgram(
       metadata: {
         optimizer: optimization.optimizer,
         autoLevel: optimization.autoLevel,
+        studentModel,
+        teacherModel,
       },
     };
 
     try {
-      const teacherInstructions = optimization.teacherInstructions ?? defaultTeacherInstructions(name);
+      const teacherInstructions = optimization.teacherInstructions ?? PROMPTS[name].teacher;
       const teacherAI = runtime.ai({
         name: provider,
         apiKey,
         baseURL,
         instructions: teacherInstructions,
       } as Record<string, unknown>);
+      if (typeof teacherAI.setOptions === 'function') {
+        teacherAI.setOptions({ model: teacherModel });
+      }
 
       const optimizer = optimization.optimizer === 'gepa-flow'
         ? new runtime.AxGEPAFlow({ studentAI, teacherAI })
@@ -192,22 +183,4 @@ function buildMetric() {
   };
 }
 
-function defaultTeacherInstructions(name: SupportProgramName) {
-  switch (name) {
-    case 'snapshot':
-      return 'Provide detailed feedback on customer snapshot completeness.';
-    case 'issueGoodwill':
-      return 'Ensure goodwill reasons are explicit and summaries are updated.';
-    case 'assignOffer':
-      return 'Encourage clarity on offer assignment and expiration communication.';
-    case 'claimOffer':
-      return 'Emphasize correct claim confirmation and offer state transitions.';
-    case 'redeemReward':
-      return 'Highlight balance changes and reward details after redemption.';
-    case 'restockReward':
-      return 'Guide restock reasoning toward low inventory rewards.';
-    default:
-      return 'Help the student produce clearer, more accurate tool outputs.';
-  }
-}
 
