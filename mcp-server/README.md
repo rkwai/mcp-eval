@@ -25,7 +25,73 @@ This directory contains the runnable MCP server that ships with the template. Ev
 3. **Flow tools** – edit `src/tools/support.ts` to match your workflows (e.g., loyalty, billing, fulfilment). Each function should call `runSupportProgram(...)` so Ax handles prompt execution and GEPA loops.
 4. **Tool registry** – register new flows in `src/tools/index.ts` with clear names, descriptions, and JSON schemas. These definitions are what the MCP clients discover.
 5. **System prompt** – update `systemPrompt()` in `src/index.ts` to describe your domain, jargon, and tool usage rules. The prompt is the primary guidance the LLM sees.
-6. **Environment** – copy `.env.example` to `.env` and provide your OpenRouter/adapter settings. Add the Ax-specific configuration variables (`AX_PROVIDER`, `AX_API_KEY`, `AX_BASE_URL`, `AX_GEPA_*`) as needed. `LLM_MODEL`, `LLM_PROVIDER_API_KEY`, `LLM_PROVIDER_BASE_URL`, and `EVAL_LOGS_ENABLED` are used by the scripts.
+6. **Environment** – copy `.env.example` to `.env` and provide your OpenRouter/adapter settings. See "Ax & GEPA Configuration" below for details on LLM provider setup.
+
+## LLM & GEPA Configuration
+
+This server uses the `@ax-llm/ax` library for DSPy-style prompt optimization. Configuration is simple: set `LLM_PROVIDER` and a few additional variables in your `.env` file.
+
+### Configuration Variables
+
+**Core Settings:**
+```bash
+LLM_PROVIDER=ollama                              # ollama, openrouter, or openai
+LLM_MODEL=llama3.2                               # Model name for your provider
+LLM_PROVIDER_API_KEY=sk-...                      # API key (not needed for Ollama)
+LLM_PROVIDER_BASE_URL=http://localhost:11434/v1  # Optional: override default URL (see note below)
+LLM_TEMPERATURE=0.1                              # Optional: model temperature (default 0.1)
+```
+
+**Note on `LLM_PROVIDER_BASE_URL`:**
+- For **Ollama**: Use `http://localhost:11434` or `http://localhost:11434/v1` (both work; Ax adds `/v1/chat/completions` internally)
+- For **other providers**: Provide the base URL without `/chat/completions` (e.g., `https://openrouter.ai/api/v1`), and it will be appended automatically
+
+**GEPA Optimization (Optional):**
+```bash
+AX_GEPA_ENABLED=true                             # Enable prompt optimization (default true)
+AX_GEPA_OPTIMIZER=gepa                           # gepa or gepa-flow (default gepa)
+AX_GEPA_AUTO=light                               # light, medium, or heavy (default light)
+LLM_TEACHER_MODEL=llama3.2                       # Optional: separate teacher model
+```
+
+**Evaluation:**
+```bash
+EVAL_LOGS_ENABLED=true                           # Write eval logs with optimization traces
+```
+
+### Provider-Specific Examples
+
+**Ollama (Local Development):**
+```bash
+LLM_PROVIDER=ollama
+LLM_MODEL=llama3.2
+LLM_PROVIDER_BASE_URL=http://localhost:11434/v1
+# No API key needed
+```
+
+**OpenRouter (Cloud):**
+```bash
+LLM_PROVIDER=openrouter
+LLM_MODEL=anthropic/claude-3.5-sonnet
+LLM_PROVIDER_API_KEY=sk-or-v1-...
+# Auto-detects https://openrouter.ai/api/v1/chat/completions
+```
+
+**OpenAI:**
+```bash
+LLM_PROVIDER=openai
+LLM_MODEL=gpt-4
+LLM_PROVIDER_API_KEY=sk-...
+# Auto-detects https://api.openai.com/v1/chat/completions
+```
+
+### How It Works
+The server automatically detects your `LLM_PROVIDER` and configures the Ax library accordingly:
+- **Ollama**: Uses Ax's Ollama provider with proper URL formatting
+- **OpenRouter**: Configures OpenRouter-specific endpoints  
+- **Others**: Generic OpenAI-compatible configuration
+
+GEPA optimization runs automatically during flow execution when `AX_GEPA_ENABLED=true`, evolving prompts and few-shot examples to improve results. Optimization traces are captured in eval logs.
 
 ## Live adapter quickstart
 1. Uncomment and fill `API_BASE_URL` in `.env`. Optional helpers:

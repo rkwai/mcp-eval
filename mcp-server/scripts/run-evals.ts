@@ -83,6 +83,14 @@ function createRunId() {
   return `${Date.now().toString(36)}-${randomUUID()}`;
 }
 
+function resolveLlmProviderLabel(): string {
+  const candidate = process.env.LLM_PROVIDER?.trim().toLowerCase();
+  if (!candidate || candidate.length === 0) {
+    return 'openrouter';
+  }
+  return candidate;
+}
+
 function configureEnvironment(liveMode: boolean): EnvironmentHooks {
   if (!liveMode) {
     return {
@@ -143,9 +151,12 @@ async function main() {
       '⚙️  Running live end-to-end evals (LLM + live adapter). Ensure API_BASE_URL and LLM_* env vars are configured.',
     );
   } else if (useLlm) {
-    console.log(
-      '⚙️  Running evals with LLM tool selection (provider: openrouter). Ensure LLM_MODEL, LLM_PROVIDER_API_KEY, and LLM_PROVIDER_BASE_URL are set.',
-    );
+    const providerLabel = resolveLlmProviderLabel();
+    const requiresApiKey = providerLabel !== 'ollama';
+    const requirement = requiresApiKey
+      ? 'Ensure LLM_MODEL, LLM_PROVIDER_API_KEY, and LLM_PROVIDER_BASE_URL are set.'
+      : 'Ensure LLM_MODEL and LLM_PROVIDER_BASE_URL are set (API key optional for ollama).';
+    console.log(`⚙️  Running evals with LLM tool selection (provider: ${providerLabel}). ${requirement}`);
   } else {
     console.log('⚙️  Running deterministic tool evals.');
   }

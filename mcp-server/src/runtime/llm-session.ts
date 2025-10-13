@@ -6,7 +6,7 @@ export type LlmMessage = {
   content: string;
 };
 
-export type SupportedProvider = 'openrouter';
+export type SupportedProvider = 'openrouter' | 'ollama';
 
 export interface LlmSessionOptions {
   provider?: SupportedProvider;
@@ -70,19 +70,20 @@ export async function runLlmSession(
   script: LlmMessage[],
   options: LlmSessionOptions = {},
 ): Promise<LlmSessionResult> {
-  const provider = options.provider ?? 'openrouter';
-  if (provider !== 'openrouter') {
-    throw new Error(`Unsupported LLM provider: ${provider}`);
-  }
-  return runOpenRouterSession(script, options);
+  const provider = resolveProvider(options.provider ?? process.env.LLM_PROVIDER);
+  return runChatCompletionSession(provider, script, options);
 }
 
-async function runOpenRouterSession(
+async function runChatCompletionSession(
+  provider: SupportedProvider,
   script: LlmMessage[],
   options: LlmSessionOptions,
 ): Promise<LlmSessionResult> {
-  const apiKey = options.apiKey ?? process.env.LLM_PROVIDER_API_KEY;
-  if (!apiKey) {
+  const requireApiKey = provider !== 'ollama';
+  const providedKey = options.apiKey ?? process.env.LLM_PROVIDER_API_KEY;
+  const apiKey = requireApiKey ? providedKey : providedKey ?? undefined;
+
+  if (requireApiKey && !apiKey) {
     throw new Error('LLM_PROVIDER_API_KEY is required to run LLM-backed evals.');
   }
 
@@ -95,6 +96,7 @@ async function runOpenRouterSession(
   if (!baseUrl) {
     throw new Error('LLM_PROVIDER_BASE_URL must be set to run LLM-backed evals.');
   }
+  const endpoint = normalizeChatCompletionUrl(baseUrl, provider);
 
   const temperature =
     typeof options.temperature === 'number'
@@ -132,7 +134,7 @@ async function runOpenRouterSession(
       tool_choice: options.toolChoice ?? 'required',
     };
 
-    const response = await callOpenRouterChatCompletion(baseUrl, apiKey, payload);
+    const response = await callChatCompletion(endpoint, apiKey, payload);
     const choice = response.choices[0];
     if (!choice) {
       throw new Error('LLM returned no choices.');
@@ -195,17 +197,20 @@ async function runOpenRouterSession(
   return { transcript, invocations };
 }
 
-async function callOpenRouterChatCompletion(
-  baseUrl: string,
-  apiKey: string,
+async function callChatCompletion(
+  url: string,
+  apiKey: string | undefined,
   payload: Record<string, unknown>,
 ): Promise<OpenRouterChatCompletionResponse> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${apiKey}`,
   };
 
-  const response = await fetch(baseUrl, {
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+
+  const response = await fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
@@ -396,6 +401,42 @@ function sanitizeRawArguments(raw: string): string {
   }
 
   return cleaned;
+}
+
+const SUPPORTED_PROVIDERS: SupportedProvider[] = ['openrouter', 'ollama'];
+
+function resolveProvider(candidate?: string | null): SupportedProvider {
+  if (!candidate || candidate.trim().length === 0) {
+    return 'openrouter';
+  }
+
+  const normalised = candidate.trim().toLowerCase();
+  if ((SUPPORTED_PROVIDERS as string[]).includes(normalised)) {
+    return normalised as SupportedProvider;
+  }
+
+  throw new Error(`Unsupported LLM provider: ${candidate}`);
+}
+
+function normalizeChatCompletionUrl(baseUrl: string, provider: SupportedProvider): string {
+  const trimmed = baseUrl.trim();
+  if (trimmed.length === 0) {
+    throw new Error('LLM_PROVIDER_BASE_URL must not be empty.');
+  }
+
+  const withoutTrailingSlash = trimmed.replace(/\/+$/, '');
+  if (withoutTrailingSlash.toLowerCase().endsWith('/chat/completions')) {
+    return withoutTrailingSlash;
+  }
+
+  if (provider === 'ollama') {
+    if (withoutTrailingSlash.toLowerCase().endsWith('/v1')) {
+      return `${withoutTrailingSlash}/chat/completions`;
+    }
+    return `${withoutTrailingSlash}/v1/chat/completions`;
+  }
+
+  return `${withoutTrailingSlash}/chat/completions`;
 }
 
 function normalizeForExtraction(raw: string): string {

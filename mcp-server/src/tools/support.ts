@@ -13,7 +13,7 @@ import {
 } from '../types';
 import { getSupportAdapter } from '../client/support-adapter';
 import { runSupportProgram } from '../ax/registry';
-import type { AxOptimizationConfig } from '../ax/types';
+import { resolveOptimizationConfig } from '../ax/config';
 
 interface LookupCustomerArgs {
   customerId?: string;
@@ -475,18 +475,4 @@ async function resolveCustomerId(
 function isExpired(date?: string) {
   if (!date) return false;
   return new Date(date).getTime() < Date.now();
-}
-
-function resolveOptimizationConfig(_flow: string): AxOptimizationConfig {
-  const enabled = process.env.AX_GEPA_ENABLED === 'true';
-  const optimizer = (process.env.AX_GEPA_OPTIMIZER as 'gepa' | 'gepa-flow') ?? 'gepa';
-  const autoLevel = (process.env.AX_GEPA_AUTO as 'light' | 'medium' | 'heavy') ?? 'light';
-  const teacherInstructions = process.env.AX_GEPA_TEACHER ?? undefined;
-
-  return {
-    enabled,
-    optimizer,
-    autoLevel,
-    teacherInstructions,
-  };
 }
