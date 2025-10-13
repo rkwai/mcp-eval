@@ -1,0 +1,23 @@
+{
+  "id": "support_redeem_reward_max_cost",
+  "description": "Agent attempts to redeem a reward under a max cost threshold that the catalog cannot satisfy, capturing the failure case.",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "Jasmine Ortiz needs a quick treat, but make sure the redemption costs no more than 500 points. If that fails, let me know why."
+    }
+  ],
+  "steps": [
+    {
+      "label": "Agent: Redeem low-cost reward for Jasmine",
+      "tool": "rewards.redeem",
+      "arguments": {
+        "email": "jasmine.ortiz@example.com",
+        "maxCost": 500
+      },
+      "expect": {
+        "status": "error"
+      }
+    }
+  ]
+}
