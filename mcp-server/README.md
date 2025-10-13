@@ -38,13 +38,13 @@ This server uses the `@ax-llm/ax` library for DSPy-style prompt optimization. Co
 LLM_PROVIDER=ollama                              # ollama, openrouter, or openai
 LLM_MODEL=llama3.2                               # Model name for your provider
 LLM_PROVIDER_API_KEY=sk-...                      # API key (not needed for Ollama)
-LLM_PROVIDER_BASE_URL=http://localhost:11434/v1  # Optional: override default URL (see note below)
+LLM_PROVIDER_BASE_URL=http://localhost:11434     # Base URL; /v1 and /chat/completions are appended automatically
 LLM_TEMPERATURE=0.1                              # Optional: model temperature (default 0.1)
 ```
 
 **Note on `LLM_PROVIDER_BASE_URL`:**
-- For **Ollama**: Use `http://localhost:11434` or `http://localhost:11434/v1` (both work; Ax adds `/v1/chat/completions` internally)
-- For **other providers**: Provide the base URL without `/chat/completions` (e.g., `https://openrouter.ai/api/v1`), and it will be appended automatically
+- For **Ollama** (local YAMA tooling): Provide the host root (`http://localhost:11434` is enough). The server normalises it to `/v1/chat/completions`.
+- For **other providers**: Supply the OpenAI-compatible base (e.g., `https://openrouter.ai/api/v1`); the `/chat/completions` suffix is added for you.
 
 **GEPA Optimization (Optional):**
 ```bash
@@ -65,7 +65,7 @@ EVAL_LOGS_ENABLED=true                           # Write eval logs with optimiza
 ```bash
 LLM_PROVIDER=ollama
 LLM_MODEL=llama3.2
-LLM_PROVIDER_BASE_URL=http://localhost:11434/v1
+LLM_PROVIDER_BASE_URL=http://localhost:11434
 # No API key needed
 ```
 
@@ -74,7 +74,7 @@ LLM_PROVIDER_BASE_URL=http://localhost:11434/v1
 LLM_PROVIDER=openrouter
 LLM_MODEL=anthropic/claude-3.5-sonnet
 LLM_PROVIDER_API_KEY=sk-or-v1-...
-# Auto-detects https://openrouter.ai/api/v1/chat/completions
+# Server appends /chat/completions automatically
 ```
 
 **OpenAI:**
@@ -91,7 +91,7 @@ The server automatically detects your `LLM_PROVIDER` and configures the Ax libra
 - **OpenRouter**: Configures OpenRouter-specific endpoints  
 - **Others**: Generic OpenAI-compatible configuration
 
-GEPA optimization runs automatically during flow execution when `AX_GEPA_ENABLED=true`, evolving prompts and few-shot examples to improve results. Optimization traces are captured in eval logs.
+GEPA optimisation runs automatically when `AX_GEPA_ENABLED=true`, evolving prompts and few-shot examples to improve results. Local models may emit `Generate failed` warnings in the logs if they cannot produce valid optimisation candidates; flows still execute with the last stable prompt.
 
 ## Live adapter quickstart
 1. Uncomment and fill `API_BASE_URL` in `.env`. Optional helpers:
@@ -112,7 +112,7 @@ npm run serve        # launch streamable HTTP server (default http://0.0.0.0:303
 Evaluation (optional):
 ```bash
 npm run eval       # deterministic flow tests
-npm run eval:llm   # OpenRouter-driven evals (requires LLM_* env vars)
+npm run eval:llm   # LLM-driven evals (requires LLM_* env vars)
 npm run eval:e2e   # LLM + live HTTP adapter (requires API_* + LLM_* env vars)
 npm run eval -- --gepa # example command to run deterministic evals with GEPA enabled
 ```

@@ -4,9 +4,9 @@ This directory stores the flow-level evaluation scenarios. Each scenario checks 
 
 ## Running evals
 - `npm run eval` – deterministic mode. Calls each flow directly with the mock adapter (or your live adapter once you swap it in) through Ax DSPy programs. When GEPA is enabled, optimisation captures are logged alongside results.
-- `npm run eval:llm` – OpenRouter LLM drives the same scenarios. The harness verifies that the required flow tool appears and that the arguments match the scenario definition, while Ax optimisation traces (if any) are stored with the run.
+- `npm run eval:llm` – The configured LLM (OpenRouter, OpenAI, or local Ollama/YAMA) drives the same scenarios. The harness verifies that the required flow tool appears and that the arguments match the scenario definition, while Ax optimisation traces (if any) are stored with the run.
 - `npm run eval:e2e` – LLM-driven run that also swaps in the live HTTP adapter (configure `API_*` and `LLM_*` variables first). Use this to validate tool sequencing against real services; GEPA runs can evaluate prompts against live data.
-- Optional logging: set `EVAL_LOGS_ENABLED=true` in `.env` to write JSONL transcripts + tool-call summaries to `evals/logs/`. When Ax optimisation runs during evals, the logs include the Pareto frontier, score history, and configuration deltas.
+- Optional logging: set `EVAL_LOGS_ENABLED=true` in `.env` to write JSONL transcripts + tool-call summaries to `evals/logs/`. When Ax optimisation runs during evals, the logs include the Pareto frontier, score history, configuration deltas, and any `Generate failed` warnings emitted by local models that cannot produce valid optimisation candidates.
 - The harness re-instantiates the mock adapter before every scenario (and each LLM prompt variant) so runs stay independent without explicit state resets.
 
 ## Scenario format

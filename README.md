@@ -26,6 +26,8 @@ This repository demonstrates how to treat an MCP server as an **application** th
 - `npm run eval:llm` – runs the scenarios with an LLM deciding which flow to call; assertions confirm that the model chose the correct tools and arguments, while optimisation traces are logged if GEPA is active.
 - `npm run eval:e2e` – end-to-end run that combines the LLM harness with a live HTTP adapter so you can validate tool sequencing against real services, with optional GEPA loops for prompt tuning against live data.
 
+The server supports OpenRouter, OpenAI, and local Ollama/YAMA providers. Set the `LLM_*` variables in `mcp-server/.env` (the runtime normalises `/v1/chat/completions` automatically).
+
 Scenarios deliberately assert **tool** usage (names + arguments) instead of downstream API payloads so you can iterate on adapters, datasets, and DSPy optimisation loops without rewriting tests.
 
 Treat this repo as a starting point: replace the mock adapter with production integrations, adapt the flows to your domain, and extend the evals to match your real support or operations scenarios.
