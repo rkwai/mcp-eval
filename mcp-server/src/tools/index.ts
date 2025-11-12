@@ -134,7 +134,7 @@ export const TOOL_CONFIG: Record<ToolName, AnyToolConfig> = {
   'rewards.redeem': {
     name: 'rewards.redeem',
     description:
-      'Redeem a reward on behalf of a customer and return the resulting activity. Example: {"email":"jasmine.ortiz@example.com","rewardId":"reward-espresso"}.',
+      'Redeem a reward on behalf of a customer. Always include maxCost when the request sets a points ceiling. Example without cap: {"email":"jasmine.ortiz@example.com","rewardId":"reward-espresso"}. Example with cap: {"email":"jasmine.ortiz@example.com","maxCost":500}.',
     schema: redeemSchema,
     runner: async (args) =>
       supportTools.redeemRewardFlow({

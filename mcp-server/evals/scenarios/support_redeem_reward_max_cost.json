@@ -14,9 +14,6 @@
       "arguments": {
         "email": "jasmine.ortiz@example.com",
         "maxCost": 500
-      },
-      "expect": {
-        "status": "error"
       }
     }
   ]

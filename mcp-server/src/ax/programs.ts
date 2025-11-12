@@ -4,12 +4,12 @@ import { PROMPTS } from './prompts';
 import type { AxEvaluationCapture, AxOptimizationConfig, SupportProgramName } from './types';
 
 const PROGRAM_SIGNATURES: Record<SupportProgramName, string> = {
-  snapshot: 'email:string, includeHistory?:boolean, historyLimit?:number -> customer:json, history:json, summary:json',
-  issueGoodwill: 'email:string, points:number, reason:string, channel?:string -> customer:json, activity:json, summary:json',
-  assignOffer: 'email:string, offerId?:string, expiresAt?:string -> customer:json, customerOffer:json, offers:json',
-  claimOffer: 'email:string, customerOfferId?:string -> customer:json, claim:json, offers:json',
-  redeemReward: 'email:string, rewardId?:string, maxCost?:number, channel?:string, note?:string -> customer:json, reward:json, activity:json',
-  restockReward: 'rewardId?:string, searchTerm?:string, quantity?:number, targetInventory?:number, active?:boolean -> reward:json',
+  snapshot: 'email:string, includeHistory?:boolean, historyLimit?:number -> payload:json',
+  issueGoodwill: 'email:string, points:number, reason:string, channel?:string -> payload:json',
+  assignOffer: 'email:string, offerId?:string, expiresAt?:string -> payload:json',
+  claimOffer: 'email:string, customerOfferId?:string -> payload:json',
+  redeemReward: 'email:string, rewardId?:string, maxCost?:number, channel?:string, note?:string -> payload:json',
+  restockReward: 'rewardId?:string, searchTerm?:string, quantity?:number, targetInventory?:number, active?:boolean -> payload:json',
 };
 
 const DEFAULT_MODEL = 'hf.co/bartowski/Qwen2.5-7B-Instruct-GGUF:Q4_K_M';
@@ -53,13 +53,14 @@ export async function runProgram(
   const runtime = await loadRuntime();
 
   // Read configuration directly from environment
-  const providerRaw = process.env.LLM_PROVIDER ?? 'openrouter';
-  const provider = providerRaw.trim();
-  const providerId = provider.toLowerCase();
+  const provider = (process.env.LLM_PROVIDER ?? 'openrouter').trim();
   const model = process.env.LLM_MODEL!;
   const baseURL = process.env.LLM_PROVIDER_BASE_URL!;
   const apiKey = process.env.LLM_PROVIDER_API_KEY || 'ollama';
   const temperature = parseNumber(process.env.LLM_TEMPERATURE, 0.1);
+
+  const teacherModel = process.env.AX_TEACHER_MODEL ?? model;
+  const teacherTemperature = parseNumber(process.env.AX_TEACHER_TEMPERATURE, 0.3);
 
   // Configure student AI
   // Note: For Ollama, LLM_PROVIDER_BASE_URL should be http://localhost:11434 (without /v1)
@@ -71,20 +72,17 @@ export async function runProgram(
     model,
     config: { 
       model,
-      temperature 
+      temperature,
     },
   };
 
   const studentAI = runtime.ai(studentConfig);
-  
-  // Debug: Log the configuration being used
-  if (process.env.AX_DEBUG === 'true') {
-    console.log('[DEBUG] Student AI Config:', JSON.stringify(studentConfig, null, 2));
-  }
 
   let capture: AxEvaluationCapture | undefined;
 
   const shouldRunOptimization = Boolean(optimization?.enabled);
+
+  const evaluationSamples: Record<string, unknown>[] = [];
 
   if (!shouldRunOptimization && optimization?.enabled) {
     capture = {
@@ -107,7 +105,18 @@ export async function runProgram(
         optimizer: optimizerConfig.optimizer,
         autoLevel: optimizerConfig.autoLevel,
         studentModel: model,
-        teacherModel: model,
+        teacherModel,
+        provider,
+        studentConfig: {
+          provider,
+          model,
+          temperature,
+        },
+        teacherConfig: {
+          provider,
+          model: teacherModel,
+          temperature: teacherTemperature,
+        },
       },
     };
 
@@ -117,10 +126,10 @@ export async function runProgram(
         name: provider,
         apiKey,
         url: baseURL,
-        model,
+        model: teacherModel,
         config: {
-          model,
-          temperature,
+          model: teacherModel,
+          temperature: teacherTemperature,
         },
       };
 
@@ -135,18 +144,25 @@ export async function runProgram(
       }
 
       const examples = await buildExamples(name, input);
-      const result = await optimizer.compilePareto(program, examples, buildMetric(), {
+      const result = await optimizer.compilePareto(program, examples, buildMetric((prediction) => {
+        if (evaluationSamples.length < 5) {
+          evaluationSamples.push(JSON.parse(JSON.stringify(prediction)));
+        }
+      }), {
         callbacks: {
           onProgress: (progress: Record<string, unknown>) => capture?.progress.push({ ...progress }),
         },
       });
-
       capture.paretoFront = result.paretoFront.map((entry: Record<string, unknown>, index: number) => ({ index, ...entry }));
       capture.scoreHistory = result.scoreHistory;
       capture.configurationHistory = result.configurationHistory?.map((entry: Record<string, unknown>) => ({ ...entry })) ?? undefined;
       capture.metadata.bestScore = result.bestScore;
+      if (evaluationSamples.length) {
+        capture.samples = evaluationSamples;
+      }
     } catch (error) {
-      console.error('[GEPA] optimizer error', {
+      const serializedError = serializeError(error);
+      const errorPayload = {
         message: (error as Error).message,
         stack: (error as Error).stack,
         signatureInputs: program.signature?.getInputFields?.().map(
@@ -157,14 +173,23 @@ export async function runProgram(
           }),
         ),
         providedInput: input,
-      });
+        details: serializedError,
+      };
+      capture.metadata.optimizerError = errorPayload;
       capture.metadata.error = (error as Error).message;
+      capture.metadata.errorDetails = serializedError;
+      if (isPermissionDenied(serializedError)) {
+        capture.metadata.hint = 'GEPA could not reach the configured LLM (permission denied). Allow network access or disable AX optimizers.';
+      }
     }
   }
 
   let output: Record<string, unknown> = {};
   try {
     output = (await program.forward(studentAI, input)) as Record<string, unknown>;
+    if (capture) {
+      capture.metadata.programOutput = output;
+    }
   } catch (error) {
     if (capture) {
       capture.metadata.forwardError = (error as Error).message;
@@ -172,10 +197,74 @@ export async function runProgram(
   }
 
   if (capture) {
+    const suggestions = collectSuggestions(name, capture.samples ?? evaluationSamples, input, output);
+    if (suggestions.length) {
+      capture.metadata.suggestions = suggestions;
+    }
     recordOptimizationCapture(name, capture);
   }
 
   return { output, capture };
+}
+
+function serializeError(error: unknown, depth = 0): Record<string, unknown> | string | undefined {
+  if (!error) {
+    return undefined;
+  }
+  if (typeof error !== 'object') {
+    return typeof error === 'string' ? error : JSON.stringify(error);
+  }
+  const result: Record<string, unknown> = {};
+  const knownKeys: Array<keyof Error> = ['name', 'message', 'stack'];
+  for (const key of knownKeys) {
+    const value = (error as Record<string, unknown>)[key as string];
+    if (value !== undefined) {
+      result[key as string] = value;
+    }
+  }
+  if ('code' in (error as Record<string, unknown>)) {
+    result.code = (error as Record<string, unknown>).code;
+  }
+  if ('cause' in (error as Record<string, unknown>) && depth < 4) {
+    result.cause = serializeError((error as Record<string, unknown>).cause, depth + 1);
+  }
+  const response = (error as Record<string, unknown>).response as {
+    status?: number;
+    statusText?: string;
+    data?: unknown;
+  } | undefined;
+  if (response) {
+    result.response = {
+      status: response.status,
+      statusText: response.statusText,
+      data: response.data,
+    };
+  }
+  const details = (error as Record<string, unknown>).details;
+  if (details) {
+    result.details = details;
+  }
+  return result;
+}
+
+function isPermissionDenied(details: unknown, depth = 0): boolean {
+  if (!details || depth > 4) {
+    return false;
+  }
+  if (typeof details === 'string') {
+    return details.includes('EPERM');
+  }
+  const record = details as Record<string, unknown>;
+  const code = typeof record.code === 'string' ? record.code : undefined;
+  const syscall = typeof record.syscall === 'string' ? record.syscall : undefined;
+  if (code === 'EPERM' || (syscall === 'connect' && record.address && record.port)) {
+    return true;
+  }
+  const nested = (record as { cause?: unknown }).cause;
+  if (nested !== undefined) {
+    return isPermissionDenied(nested, depth + 1);
+  }
+  return false;
 }
 
 async function buildExamples(name: SupportProgramName, input: Record<string, unknown>) {
@@ -186,17 +275,16 @@ async function buildExamples(name: SupportProgramName, input: Record<string, unk
       const customer = await ensureCustomerProfile(adapter, input.email);
       const includeHistory = coerceBoolean(input.includeHistory, true);
       const historyLimit = coercePositiveInteger(input.historyLimit, 5);
-      const history = includeHistory
-        ? (await safeCustomerHistory(adapter, customer.id)).slice(0, historyLimit)
-        : [];
       return [
         {
           email: customer.email,
           includeHistory,
           historyLimit,
-          customer,
-          history,
-          summary: { totalEvents: history.length },
+          payload: {
+            email: customer.email,
+            includeHistory,
+            historyLimit,
+          },
         },
       ];
     }
@@ -211,40 +299,29 @@ async function buildExamples(name: SupportProgramName, input: Record<string, unk
           points,
           reason,
           ...(channel ? { channel } : {}),
-          customer,
-          activity: {
-            type: 'earn',
+          payload: {
+            email: customer.email,
             points,
-            balanceAfter: customer.pointsBalance + points,
-            source: `Goodwill - ${reason}`,
+            reason,
+            channel,
           },
-          summary: { totalEvents: 1 },
         },
       ];
     }
     case 'assignOffer': {
       const customer = await ensureCustomerProfile(adapter, input.email);
-      const offersSnapshot = await ensureCustomerOffers(adapter, customer.id);
       const offer = await ensureOffer(adapter, input.offerId);
       const expiresAt = coerceString(input.expiresAt, isoDaysAhead(7));
-      const customerOffer = {
-        id: generateId('coffer'),
-        offerId: offer.id,
-        customerId: customer.id,
-        status: 'available',
-        assignedAt: nowIso(),
-        expiresAt,
-        offer,
-      };
-      const offers = [customerOffer, ...offersSnapshot.filter((entry: { id: string }) => entry.id !== customerOffer.id)];
       return [
         {
           email: customer.email,
           offerId: offer.id,
           expiresAt,
-          customer,
-          customerOffer,
-          offers,
+          payload: {
+            email: customer.email,
+            offerId: offer.id,
+            expiresAt,
+          },
         },
       ];
     }
@@ -253,37 +330,14 @@ async function buildExamples(name: SupportProgramName, input: Record<string, unk
       const customerOffers = await ensureCustomerOffers(adapter, customer.id);
       const availableOffer = customerOffers.find((entry: { status: string }) => entry.status === 'available') ?? customerOffers[0];
       const offerEntry = availableOffer ?? createSampleCustomerOffer(customer.id, await ensureOffer(adapter));
-      const claimRecord = {
-        customer,
-        offer: offerEntry.offer ?? (await ensureOffer(adapter)),
-        customerOffer: {
-          ...offerEntry,
-          status: 'claimed',
-          claimedAt: nowIso(),
-        },
-        reward: await ensureReward(adapter, offerEntry.offer?.rewardId),
-        activity: {
-          id: generateId('act'),
-          customerId: customer.id,
-          type: 'redeem',
-          points: -400,
-          balanceAfter: Math.max(0, customer.pointsBalance - 400),
-          source: offerEntry.offer?.name ?? 'Claimed offer',
-          occurredAt: nowIso(),
-        },
-      };
-      const refreshedOffers = customerOffers.map((entry) => (
-        entry.id === offerEntry.id
-          ? { ...entry, status: 'claimed', claimedAt: claimRecord.customerOffer.claimedAt }
-          : entry
-      ));
       return [
         {
           email: customer.email,
           customerOfferId: offerEntry.id,
-          customer,
-          claim: claimRecord,
-          offers: refreshedOffers,
+          payload: {
+            email: customer.email,
+            customerOfferId: offerEntry.id,
+          },
         },
       ];
     }
@@ -299,21 +353,12 @@ async function buildExamples(name: SupportProgramName, input: Record<string, unk
           channel,
           ...(input.maxCost !== undefined ? { maxCost: coercePositiveInteger(input.maxCost, reward.cost) } : {}),
           ...(note ? { note } : {}),
-          customer: {
-            ...customer,
-            pointsBalance: Math.max(0, customer.pointsBalance - reward.cost),
-          },
-          reward,
-          activity: {
-            id: generateId('act'),
-            customerId: customer.id,
-            type: 'redeem',
-            points: -reward.cost,
-            balanceAfter: Math.max(0, customer.pointsBalance - reward.cost),
-            source: reward.name,
+          payload: {
+            email: customer.email,
+            rewardId: reward.id,
+            maxCost: input.maxCost,
             channel,
-            occurredAt: nowIso(),
-            metadata: note ? { note } : undefined,
+            note,
           },
         },
       ];
@@ -330,10 +375,12 @@ async function buildExamples(name: SupportProgramName, input: Record<string, unk
           ...(typeof quantity === 'number' && quantity !== 0 && input.targetInventory === undefined ? { quantity } : {}),
           ...(typeof active === 'boolean' ? { active } : {}),
           ...(input.searchTerm ? { searchTerm: coerceString(input.searchTerm, reward.name) } : {}),
-          reward: {
-            ...reward,
-            inventory: targetInventory,
-            active: typeof active === 'boolean' ? active : reward.active,
+          payload: {
+            rewardId: reward.id,
+            targetInventory,
+            quantity: typeof quantity === 'number' ? quantity : undefined,
+            active,
+            searchTerm: input.searchTerm ? coerceString(input.searchTerm, reward.name) : undefined,
           },
         },
       ];
@@ -347,12 +394,82 @@ async function buildExamples(name: SupportProgramName, input: Record<string, unk
   }
 }
 
-function buildMetric() {
+function buildMetric(logSample?: (prediction: Record<string, unknown>) => void) {
   return ({ prediction }: { prediction: Record<string, unknown> }) => {
     if (!prediction) return 0;
+    if (logSample) {
+      logSample(prediction);
+    }
     const fieldCount = Object.keys(prediction).length;
     return fieldCount > 0 ? 1 : 0.1;
   };
+}
+
+function collectSuggestions(
+  name: SupportProgramName,
+  samples: Array<Record<string, unknown>>,
+  input: Record<string, unknown>,
+  output: Record<string, unknown>,
+): string[] {
+  if (!samples || samples.length === 0) {
+    return [];
+  }
+  const payloads = samples
+    .map((sample) => extractPayload(sample))
+    .filter((payload): payload is Record<string, unknown> => Boolean(payload));
+
+  const suggestions: string[] = [];
+
+  if (name === 'redeemReward') {
+    const requiresMaxCost = typeof input.maxCost === 'number';
+    const hasCamelRewardId = payloads.some((payload) => typeof payload['rewardId'] === 'string');
+    const hasSnakeRewardId = payloads.some((payload) => typeof payload['reward_id'] === 'string');
+    const hasAnyRewardId = hasCamelRewardId || hasSnakeRewardId;
+    if (!hasAnyRewardId) {
+      suggestions.push('Prompt the model to include payload.rewardId so the failing redemption has a concrete target reward.');
+    } else if (!hasCamelRewardId && hasSnakeRewardId) {
+      suggestions.push('Remind the model to emit rewardId in camelCase (rewardId) instead of reward_id.');
+    }
+
+    const hasCamelMaxCost = payloads.some((payload) => Object.prototype.hasOwnProperty.call(payload, 'maxCost'));
+    const hasSnakeMaxCost = payloads.some((payload) => Object.prototype.hasOwnProperty.call(payload, 'max_cost'));
+    if (requiresMaxCost && !hasCamelMaxCost) {
+      if (hasSnakeMaxCost) {
+        suggestions.push('Explicitly state that maxCost must stay camelCase when relaying user caps.');
+      } else {
+        suggestions.push('Tell the model to echo payload.maxCost when customers specify a points ceiling.');
+      }
+    }
+
+    const anySnakeCase = payloads.some((payload) =>
+      Object.keys(payload).some((key) => key.includes('_')),
+    );
+    if (anySnakeCase) {
+      suggestions.push('Clarify in the prompt that payload keys must use camelCase (rewardId, maxCost, channel, etc.).');
+    }
+
+    const missingChannel = payloads.every((payload) => payload['channel'] === undefined);
+    if (missingChannel && input.channel) {
+      suggestions.push('Ask the model to pass through the requested channel so support can audit where redemptions happen.');
+    }
+  }
+
+  if (suggestions.length === 0 && !output.payload) {
+    suggestions.push('Encourage the model to return a payload object so GEPA can compare candidates meaningfully.');
+  }
+
+  return suggestions;
+}
+
+function extractPayload(sample: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!sample) {
+    return undefined;
+  }
+  const candidate = (sample as Record<string, unknown>)['payload'];
+  if (candidate && typeof candidate === 'object') {
+    return candidate as Record<string, unknown>;
+  }
+  return sample;
 }
 
 async function ensureCustomerProfile(adapter: ReturnType<typeof getSupportAdapter>, emailValue: unknown) {

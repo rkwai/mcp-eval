@@ -24,5 +24,5 @@ export interface AxEvaluationCapture {
   paretoFront?: Array<Record<string, unknown>>;
   scoreHistory?: number[];
   configurationHistory?: Array<Record<string, unknown>>;
+  samples?: Array<Record<string, unknown>>;
 }
-

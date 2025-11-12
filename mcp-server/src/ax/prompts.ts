@@ -2,28 +2,28 @@ import type { SupportProgramName, PromptConfig } from './types';
 
 export const PROMPTS: Record<SupportProgramName, PromptConfig> = {
   snapshot: {
-    teacher: 'Provide detailed feedback on customer snapshot completeness.',
-    student: 'When gathering customer snapshots, ensure the profile, history, and summary are complete and consistent.'
+    teacher: 'Require the assistant to return {"payload":{customer,history,summary}} and flag any missing nested keys.',
+    student: 'Reply with {"payload":{"customer":{...},"history":[...],"summary":{...}}} and nothing else.'
   },
   issueGoodwill: {
-    teacher: 'Ensure goodwill reasons are explicit and summaries are updated.',
-    student: 'When issuing goodwill, cite the explicit reason, record the activity, and update the summary with new balance context.'
+    teacher: 'Ensure the output is {"payload":{customer,activity,summary}} with valid JSON bodies.',
+    student: 'Return {"payload":{"customer":{...},"activity":{...},"summary":{...}}}.'
   },
   assignOffer: {
-    teacher: 'Encourage clarity on offer assignment and expiration communication.',
-    student: 'Assign offers accurately, returning the customer, the new customer offer, and the updated list of offers with any expiration details.'
+    teacher: 'Check that responses take the form {"payload":{customer,customerOffer,offers}}.',
+    student: 'Respond with {"payload":{"customer":{...},"customerOffer":{...},"offers":[...]}}.'
   },
   claimOffer: {
-    teacher: 'Emphasise correct claim confirmation and offer state transitions.',
-    student: 'When claiming offers, confirm the updated status and return the customer, the claim details, and refreshed offer state.'
+    teacher: 'Demand {"payload":{customer,claim,offers}}; highlight gaps.',
+    student: 'Return {"payload":{"customer":{...},"claim":{...},"offers":[...]}} only.'
   },
   redeemReward: {
-    teacher: 'Highlight balance changes and reward details after redemption.',
-    student: 'Redeem rewards by referencing the newest customer balance, the redeemed reward, and the resulting loyalty activity.'
+    teacher: 'Verify the assistant outputs {"payload":{customer,reward,activity}}.',
+    student: 'Produce {"payload":{"customer":{...},"reward":{...},"activity":{...}}}.'
   },
   restockReward: {
-    teacher: 'Guide restock reasoning toward low inventory rewards.',
-    student: 'Restock rewards by targeting low inventory items, returning the updated reward record with inventory and active status.'
+    teacher: 'Require {"payload":{reward}} where reward is the updated record.',
+    student: 'Respond with {"payload":{"reward":{...}}}.'
   },
 };
 
@@ -37,4 +37,3 @@ export const SYSTEM_PROMPT = [
   'All tool arguments use camelCase keys. Example loyalty.issueGoodwill call: {"email":"marcus.lee@example.com","points":500,"reason":"Delayed shipment credit"}.',
   'Successful responses highlight balances, offers, and recommended next steps for the support agent.',
 ].join(' ');
-

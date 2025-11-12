@@ -25,6 +25,7 @@ This directory stores the flow-level evaluation scenarios. Each scenario checks 
 - `support_offer_assignment` → `offers.assign`
 - `support_offer_claim` → `offers.claim`
 - `support_redeem_reward` → `rewards.redeem`
+- `support_redeem_reward_max_cost` → `rewards.redeem` (intentionally fails; used to surface GEPA optimisation samples + suggestions)
 - `support_restock_reward` → `rewards.restock`
 
 Use these as templates: keep conversations realistic, call a single flow tool, and assert the business intent by demanding the right tool + arguments. Adjust or replace the mock adapter so the flows target your real systems and extend the scenarios to cover your critical workflows.
